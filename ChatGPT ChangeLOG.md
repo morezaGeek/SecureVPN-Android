@@ -705,12 +705,15 @@ Sourceهای pinned خوانده‌شده برای MTU و XHTTP در `scratch/co
 - با ورود کاربر به AdMob، اپ Android با نام نمایشی **SecureVPN** و واحد بنر ثبت شد. App ID: `ca-app-pub-5284715425712192~7524274903`؛ Banner ID: `ca-app-pub-5284715425712192/9988540732`. شناسه‌های واقعی در سورس تست جایگزین نشدند؛ UMP/رضایت هنوز آماده نیست.
 - پیش‌نیازهای build مانده: target/compile API36، همهٔ nativeها 16KB، upload key/Play App Signing و AAB. APK تست با Android Debug امضا شده و هنوز قابل ارسال نیست.
 - کاربر مالکیت دامنهٔ `rahanetmci.com` را تأیید کرد. Cloudflare نشان می‌دهد DNS zone با تنظیم Full فعال است؛ ۵۸ رکورد وجود دارد، اما root و www هنوز رکورد وب‌سایت ندارند. پکیج `com.rahanetmci.securevpn` آزاد دیده شد؛ app record هنوز ساخته نشده است.
-- فایل‌های وب ایستای SecureVPN شامل صفحهٔ انگلیسی/فارسی، پشتیبانی و `app-ads.txt` در `website/` آماده شدند. تماس عمومی با ایمیل تأییدشدهٔ مالک درج شد. مقصد برنامه‌ریزی‌شده `https://securevpn.rahanetmci.com` است؛ Deploy و اتصال custom domain هنوز باید تکمیل شود. رکوردهای موجود سرور تغییر نکردند.
+- فایل‌های وب ایستای SecureVPN شامل صفحهٔ انگلیسی/فارسی، پشتیبانی و `app-ads.txt` در `website/` آماده شدند. سایت در Cloudflare Pages با نام `securevpn-site` منتشر و دامنهٔ `securevpn.rahanetmci.com` متصل شد. مسیرهای اصلی با HTTPS بررسی شدند؛ وضعیت دامنه در داشبورد هنوز Verifying است.
 - در ANDROID_PLAY_PREPARATION.md وضعیت حساب، مراحل رسمی، مقررات آزمون Closed، VPN declaration، privacy/Data safety، app-ads.txt و موارد نیازمند تأیید صاحب حساب ثبت شده‌اند.
 - منابع رسمی بررسی‌شده: Target API36 از 31اوت2026؛ شرط 12 آزمایشگر/14روز برای حساب‌های Personal مشمول؛ الزامات 16KB، VPN، Data safety و AdMob readiness.
 - هیچ app record در Play ساخته، AAB/APK بارگذاری یا release منتشر نشده؛ دو اظهارنامهٔ قانونی داخل Create app را بدون تأیید مالک تیک نزدم.
 
-## آماده‌سازی Deploy سایت SecureVPN — 2026-10-08
+## انتشار سایت SecureVPN در Cloudflare Pages — 2026-10-08
 
-- Cloudflare Workers اکنون ۶ فایل انتخاب‌شده را در فرم Upload نشان می‌دهد: `README.md`، صفحهٔ اصلی، privacy، support، `robots.txt` و `app-ads.txt`. هنوز دکمهٔ Deploy زده نشده است.
-- پیش از Deploy، نام تصادفی Worker به `securevpn-site` تغییر کند و `README.md` از فایل‌های عمومی حذف شود. پس از Deploy، ابتدا URL `workers.dev` و سپس دامنهٔ سفارشی `securevpn.rahanetmci.com` بررسی شود؛ هیچ رکورد فعلی VPN را دست‌کاری نکن.
+- فایل‌های `index.html`، `privacy/`، `support/`، `robots.txt` و `app-ads.txt` با Direct Upload در Pages project `securevpn-site` منتشر شدند. README در بستهٔ عمومی قرار نگرفت.
+- دامنهٔ `securevpn.rahanetmci.com` از مسیر Custom Domains متصل شد. CNAME زیردامنه به `securevpn-site.pages.dev` اشاره می‌کند؛ هیچ رکورد VPN دیگری تغییر نکرد. Cloudflare در لحظهٔ بررسی وضعیت Verifying/Initializing نشان می‌داد و هشدار می‌داد انتشار DNS ممکن است تا ۴۸ ساعت طول بکشد.
+- بررسی واقعی مرورگر در همان نشست: صفحهٔ اصلی، `/privacy/`، `/support/` و `/app-ads.txt` روی دامنهٔ اختصاصی با HTTPS باز شدند. محتوای `app-ads.txt` با ناشر AdMob مطابقت داشت.
+- مسیر اولیهٔ Workers به خطای 1101 می‌رسید؛ برای سایت ایستا از Pages استفاده شد. Worker آزمایشی حذف نشد و مشاهده‌پذیری موقتی آن خاموش است؛ دامنه به آن Worker متصل نیست.
+- آدرس عمومی سایت: `https://securevpn.rahanetmci.com`. این انتشار سایت توسعه‌دهنده است و به معنی انتشار اپ در Google Play یا تأیید app-ads.txt در AdMob نیست.

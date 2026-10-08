@@ -1,6 +1,7 @@
 # SecureVPN public site
 
-Static files for a Cloudflare Worker, to be deployed on `securevpn.rahanetmci.com`.
+Static files for the Cloudflare Pages project `securevpn-site`, published at
+`https://securevpn.rahanetmci.com`.
 
 Routes:
 
@@ -9,8 +10,8 @@ Routes:
 - `/support/` — support contact
 - `/app-ads.txt` — AdMob authorized seller record
 
-In Cloudflare Dashboard, open Workers & Pages > Create app > Upload and deploy. Upload this directory, set the Worker name to `securevpn-site`, and deploy. Verify the generated `workers.dev` URL first. Then open the Worker settings/domains and add `securevpn.rahanetmci.com` as a Custom Domain; Cloudflare manages the subdomain DNS record and certificate. Do not change nameservers or delete/modify existing VPN records. Verify HTTPS, `/privacy/`, `/support/`, and `/app-ads.txt` after activation.
+To publish an update, use Cloudflare Pages > `securevpn-site` > Create deployment > Direct Upload. Upload the site files (excluding this README), then verify the Pages URL and the custom domain. The custom-domain CNAME is `securevpn` → `securevpn-site.pages.dev`; Cloudflare manages its certificate. Do not change nameservers or modify existing VPN records.
 
-As of 2026-10-08, the Cloudflare upload screen showed six files selected, but deployment and the custom hostname are not yet confirmed. Exclude this `README.md` from the public assets. The public support contact is `mo.reza2011@gmail.com`.
+As of 2026-10-08, the Pages deployment and all four routes were checked in a browser over HTTPS. Cloudflare's dashboard can continue to show the custom domain as Verifying while DNS/certificate status settles. The public support contact is `mo.reza2011@gmail.com`.
 
 The privacy text describes the Android source as inspected on 2026-10-08. Re-check it whenever SDKs, network providers, backup behavior, or ad consent changes.

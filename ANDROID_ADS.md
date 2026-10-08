@@ -31,6 +31,10 @@
 
 برای فعال‌کردن تبلیغات واقعی: readiness/store linking، consent با UMP و گزینهٔ مدیریت حریم خصوصی در مناطق لازم، app-ads.txt/سایت توسعه‌دهنده و اصلاح Data safety/privacy policy انجام شوند. صرف تعویض دو ID برای انتشار کافی نیست. موانع اولیهٔ Play (امضا/API36/native16KB) نیز در ANDROID_PLAY_PREPARATION.md باقی‌اند. درخواست بنر از مسیر معمول اینترنت انجام می‌شود؛ routing کاربران/اپ‌های دیگر برای درآمد تبلیغات تغییر نکرده است.
 
+## سایت توسعه‌دهنده — 2026-10-08
+
+سایت دوزبانهٔ SecureVPN در Cloudflare Pages منتشر شده است: `https://securevpn.rahanetmci.com`. مسیرهای `/`, `/privacy/`, `/support/` و `/app-ads.txt` با HTTPS بررسی شدند. بررسی انتشار `app-ads.txt` در AdMob پس از اتصال وب‌سایت به Store listing باقی است.
+
 ## آزمون و منابع
 
 پنج آزمون JVM برای دو چرخه، شکست/تکرار، نشست قدیمی، foreground/Home، cooldown/تغییر ساعت و محدودکردن backlog اضافه شدند. آزمون Android ذخیرهٔ چند instance و impression/failure و آزمون بارگذاری Google demo با گزارش جدا نیز وجود دارند. نتیجهٔ واقعی دریافت creative وابسته به شبکه است و باید جدا از آزمون منطق گزارش شود.
