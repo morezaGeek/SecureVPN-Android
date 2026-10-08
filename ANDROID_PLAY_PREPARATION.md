@@ -13,6 +13,34 @@
 | ELF کتابخانه‌های arm64 | libbox:16KB؛ libconscrypt_jni/libopenconnect/libstoken:4KB | دریافت نسخهٔ سازگار یا بازسازی nativeها با NDK مناسب و آزمون دستگاه16KB؛ تغییر ZIP alignment به‌تنهایی کافی نیست |
 | Bundle | APK تست چهار ABI ساخته می‌شود؛ هنوز AAB آمادهٔ Play نداریم | بعد از رفع موارد بالا ساخت bundle و بررسی APKهای تولیدشده با bundletool |
 
+## بررسی حساب‌ها و روند انتشار — 2026-10-08
+
+- Play Console در مرورگر با حساب **MRE Developer / Personal** باز بود. فهرست حساب فقط اپ Persian & Gregorian Calendar را در Closed testing نشان می‌داد؛ SecureVPN هنوز ثبت نشده است.
+- فرم Create app را فقط برای مشاهده بررسی کردم و چیزی ثبت نکردم. فرم نام اپ و package ID، نوع App/Game و Free/Paid می‌خواهد و سپس از صاحب حساب می‌خواهد تأیید کند که برنامه با سیاست‌های Play سازگار است و الزامات قوانین صادرات آمریکا، از جمله رمزنگاری، رعایت شده‌اند. چون package ID بعد از انتشار قابل‌تغییر نیست و این تأییدها مسئولیت قانونی توسعه‌دهنده‌اند، هنوز فرم را نفرستادم.
+- در همین نشست مرورگر، AdMob به صفحهٔ عمومی Sign in / Sign up رفت و داشبورد حساب ناشر باز نشد. بنابراین حساب/واحد تبلیغ موجود را نتوانستم تأیید کنم؛ APK1.0.1 فقط شناسه‌های demo دارد و درآمدزا نیست.
+- انتشار عمومی اکنون به رفع سه مانع اصلی build نیاز دارد: target/compile API36، هم‌ترازی و آزمون همهٔ کتابخانه‌های native برای page size 16KB، و کلید upload خصوصی با Play App Signing. APKهای sideload با debug key امضا شده‌اند و نصب Play با کلید جدا می‌تواند برای ارتقا نیازمند حذف نسخهٔ sideload باشد.
+- پس از build آمادهٔ Play، مراحل Console شامل Store listing و گرافیک/تصاویر، privacy policy عمومی و درون‌اپ، فرم Data safety با احتساب SDKهای تبلیغاتی، VpnService declaration و فیلم کوتاه جریان VPN/افشای روشن، طبقه‌بندی محتوا، تبلیغات، کشورهای انتشار و شروع Internal/Closed testing است. حساب‌های Personal که پس از 13نوامبر2023 ایجاد شده‌اند برای دسترسی Production به Closed test با حداقل12 آزمایشگر پیوسته برای14روز نیاز دارند؛ تاریخ ایجاد حساب را باید در Console بررسی کرد.
+- AdMob برای این اپ پس از آماده‌شدن listing عمومی: ایجاد/افزودن اپ و banner unit، جایگزینی شناسه‌های demo با شناسه‌های حساب، راه‌اندازی UMP/consent و Data safety سازگار، افزودن وب‌سایت توسعه‌دهنده به Play listing، انتشار و verify کردن `app-ads.txt`، سپس درخواست app readiness review. تا پایان review نمایش کامل تبلیغ تضمین نیست.
+
+### اطلاعات و تأییدهای لازم از صاحب حساب
+
+1. نام نهایی قابل‌نمایش و package ID پایدار برای Play؛ package فعلی `com.vpnapp` است ولی شناسه‌ای عمومی/ژنریک به‌نظر می‌رسد. پیشنهاد می‌شود پیش از ساخت از دامنه‌ای که مالک آن هستید استفاده شود. بعداً نمی‌توان package را عوض کرد.
+2. تأیید رایگان‌بودن اپ (با توجه به درخواست تبلیغ، Free محتمل است) و مالکیت/تماس توسعه‌دهنده برای سیاست حریم خصوصی و صفحهٔ فروشگاه.
+3. تأیید خود توسعه‌دهنده برای دو اظهارنامهٔ داخل فرم Create app: انطباق کامل با سیاست‌های Play، و مجازبودن صادرات نرم‌افزار رمزنگاری‌شده تحت قوانین مربوط. این گزاره‌ها را من به‌جای صاحب حساب تأیید نمی‌کنم.
+4. ورود به AdMob با حساب ناشر موردنظر و تکمیل اطلاعات پرداخت/هویت توسط صاحب حساب. AdMob الزام می‌کند اطلاعات پرداخت و احراز هویت لازم برای پرداخت درآمد در حساب ثبت شود.
+5. پس از فعال‌شدن حساب، شناسهٔ ناشر AdMob و نهایی‌شدن وب‌سایت توسعه‌دهنده تا `app-ads.txt` ساخته و verify شود. این فایل باید از دامنهٔ توسعه‌دهنده‌ای باشد که به Store listing متصل است.
+
+## مراحل رسمی
+
+1. رفع build blockers بالا، ساخت upload key و AAB، آزمون smoke روی Android16/16KB و بررسی bundle.
+2. ایجاد app record، تعیین نام و package ID نهایی، سپس تکمیل Store listing و contact/website.
+3. بارگذاری Internal test، تأیید artifact و نصب، تکمیل privacy/Data safety/VpnService/ads/content rating declarations.
+4. انتشار Closed test؛ اگر حساب شخصی مشمول قاعدهٔ جدید باشد، جمع‌کردن12 tester که14روز پیوسته opt-in بمانند و سپس درخواست Production access.
+5. پس از پذیرش Production، ارسال Production release و rollout.
+6. تکمیل AdMob: حساب و payment details، شناسه‌ها/واحد تبلیغ، consent، `app-ads.txt` و readiness review.
+
+پیش‌نیاز آزمون شخصی: حساب Personal ایجادشده بعد از 13نوامبر2023 باید قبل از Production حداقل12 tester را14روز پیوسته در Closed test داشته باشد؛ [الزام رسمی آزمون حساب‌های شخصی](https://support.google.com/googleplay/android-developer/answer/14151465?hl=en). Target API36 برای برنامه‌های جدید از31اوت2026 لازم است؛ [شرط Target API](https://support.google.com/googleplay/android-developer/answer/11926878?hl=en). کتابخانه‌های 4KB با target35+، شرط [پشتیبانی 16KB](https://developer.android.com/guide/practices/page-sizes) را برآورده نمی‌کنند. VPNها باید [فرم VpnService](https://support.google.com/googleplay/android-developer/answer/12564964?hl=en) را تکمیل و استفاده را در listing مستند کنند. [Data safety و privacy policy](https://support.google.com/googleplay/android-developer/answer/10787469?hl=en) حتی برای اپ‌های تست بسته نیز لازم‌اند، جز Internal-only؛ دادهٔ SDKهای ثالث هم باید بررسی شود.
+
 شواهد محلی: `scratch/android-1.0-native-audit.json`، APK استخراج‌شده با ELF program header واقعی. تنها alignment بررسی شده؛ این بررسی جای آزمون runtime روی دستگاه16KB را نمی‌گیرد. APK فعلی برای دستگاه‌های4KB قابل تست است. کتابخانهٔ libbox از نسخهٔ pinned `1.14.2-lx.11` آمده است.
 
 نخستین انتشار بودن را کاربر تأیید کرده است. کلید debug با کلید Play جایگزین نشود تا فایل‌های تست موجود بی‌دلیل از قابلیت ارتقا خارج نشوند. کانال sideload و Play می‌توانند تنظیم امضای جدا داشته باشند؛ نصب نسخهٔ فروشگاه روی APK debug بدون uninstall امکان‌پذیر نیست. قبل از حذف اپ باید کاربر export بگیرد.

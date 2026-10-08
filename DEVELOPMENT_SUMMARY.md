@@ -470,3 +470,14 @@
 - پوشه `windows-app-tauri/src-tauri/target/debug` (کش میانی بیلد Rust که حجم بالایی می‌گیرد و با دستور بیلد مجدداً ساخته می‌شود).
 - پوشه `app/build/intermediates` در اندروید (با اجرای `gradlew clean` تمیز می‌شود).
 - از قرار دادن فایل‌های باینری قدیمی (مثل ستاپ‌های نسخه‌های قبل، فایل‌های لاگ حجیم txt، و فایل‌های Zip موقت) در ریشه پروژه خودداری شود.
+
+ثبت GitHub: تغییرات Android1.0.1 به مخزن خصوصی SecureVPN-Android، شاخهٔ main، commit `faf49eefa9487189bd25ec242ea716904edf4b45` پوش شدند و HEAD ریموت با local برابر بود. ریپوی Windows پوش نشد.
+
+## بررسی شروع Google Play و AdMob — 2026-10-08
+
+- مرورگر به Play Console حساب MRE Developer (Personal) دسترسی داشت؛ فقط Persian & Gregorian Calendar دیده شد، SecureVPN هنوز app record ندارد. فرم Create app بررسی شد ولی ارسال نشد: نام و package ID پایدار، نوع و قیمت اپ، اظهارنامهٔ سیاست‌های Play و تأیید مالک برای قانون صادرات/رمزنگاری لازم است.
+- مرورگر AdMob را به صفحهٔ Sign in / Sign up برد؛ داشبورد ناشر و شناسه‌ها در دسترس نبودند. فعلاً شناسه‌های رسمی demo داخل APK باقی‌اند.
+- پیش‌نیازهای build مانده: target/compile API36، همهٔ nativeها 16KB، upload key/Play App Signing و AAB. APK تست با Android Debug امضا شده و هنوز قابل ارسال نیست.
+- در ANDROID_PLAY_PREPARATION.md وضعیت حساب، مراحل رسمی، مقررات آزمون Closed، VPN declaration، privacy/Data safety، app-ads.txt و موارد نیازمند مالکیت/تأیید صاحب حساب ثبت شده‌اند.
+- منابع رسمی بررسی‌شده: Target API36 از 31اوت2026؛ شرط 12 آزمایشگر/14روز برای حساب‌های Personal مشمول؛ الزامات 16KB، VPN، Data safety و AdMob readiness.
+- هیچ app record در Play ساخته، AAB/APK بارگذاری یا release منتشر نشده؛ دو اظهارنامهٔ قانونی داخل Create app را بدون تأیید مالک تیک نزدم.
