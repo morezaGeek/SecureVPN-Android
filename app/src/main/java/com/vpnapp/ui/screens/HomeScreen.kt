@@ -91,15 +91,8 @@ fun HomeScreen(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(BackgroundGradient)
+            .background(CurrentBackground)
     ) {
-        // World map background - keyed by connectionState only, NOT connectionInfo
-        // This prevents recomposition when stats update every 2 seconds
-            WorldMapBackground(
-                connectionState = connectionState,
-                modifier = Modifier.fillMaxSize()
-            )
-        
         Column(
             modifier = Modifier
                 .fillMaxSize()

@@ -11,8 +11,8 @@ android {
         applicationId = "com.vpnapp"
         minSdk = 26
         targetSdk = 35
-        versionCode = 198
-        versionName = "1.3.68"
+        versionCode = 199
+        versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

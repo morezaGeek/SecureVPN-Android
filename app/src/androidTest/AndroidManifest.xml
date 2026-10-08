@@ -1,4 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <instrumentation android:name="androidx.test.runner.AndroidJUnitRunner"
+        android:targetPackage="com.vpnapp" />
+    <instrumentation android:name="com.vpnapp.ReleaseAppearanceInstrumentation"
+        android:targetPackage="com.vpnapp" android:functionalTest="true" />
     <instrumentation android:name="com.vpnapp.ReleaseSmokeInstrumentation"
         android:targetPackage="com.vpnapp" android:functionalTest="true" />
     <instrumentation android:name="com.vpnapp.ReleaseServerDiagnosticsInstrumentation"

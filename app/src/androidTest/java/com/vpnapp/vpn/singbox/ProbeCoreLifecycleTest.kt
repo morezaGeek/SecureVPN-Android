@@ -142,6 +142,36 @@ class ProbeCoreLifecycleTest {
                     ?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN) == true
                 while (!vpnReady() && android.os.SystemClock.elapsedRealtime() < readyUntil) Thread.sleep(50)
                 assertTrue("DNS query must enter the Android VPN", vpnReady())
+                if (round == 0) {
+                    // Simulate the reported case: the OS drops the notice without a delete callback.
+                    val notifications = context.getSystemService(android.app.NotificationManager::class.java)
+                    val original = notifications.activeNotifications.single { it.id == 1 }.notification
+                    notifications.notify(1, android.app.Notification.Builder.recoverBuilder(context, original)
+                        .setDeleteIntent(null).build())
+                    val automation = instrumentation.uiAutomation
+                    automation.executeShellCommand("cmd statusbar expand-notifications").close()
+                    Thread.sleep(800)
+                    fun find(node: android.view.accessibility.AccessibilityNodeInfo?): android.view.accessibility.AccessibilityNodeInfo? {
+                        if (node == null) return null
+                        if (node.text?.toString()?.contains("Local probe fixture") == true) return node
+                        for (index in 0 until node.childCount) find(node.getChild(index))?.let { return it }
+                        return null
+                    }
+                    val title = find(automation.rootInActiveWindow)
+                    assertNotNull("VPN notification must be visible", title)
+                    val bounds = android.graphics.Rect().also { title!!.getBoundsInScreen(it) }
+                    automation.executeShellCommand("input swipe ${bounds.centerX()} ${bounds.centerY()} 1075 ${bounds.centerY()} 350").close()
+                    Thread.sleep(800)
+                    assertFalse("Ongoing notice must really be dismissed on Android 14", notifications.activeNotifications.any { it.id == 1 })
+                    automation.executeShellCommand("cmd statusbar collapse").close()
+                    val restoreUntil = android.os.SystemClock.elapsedRealtime() + 20_000
+                    while (notifications.activeNotifications.none { it.id == 1 } && android.os.SystemClock.elapsedRealtime() < restoreUntil)
+                        Thread.sleep(100)
+                    val restored = notifications.activeNotifications.single { it.id == 1 }.notification
+                    assertTrue(restored.flags and android.app.Notification.FLAG_ONGOING_EVENT != 0)
+                    assertNotNull("Restore the real dismissal callback too", restored.deleteIntent)
+                    assertTrue("Notification recovery must keep the tunnel alive", vpnReady())
+                }
                 // Vary allocation order after reconnect. Applications can retain a previously resolved IP.
                 repeat(round + 1) { fakeIp("noise-$round-$it.invalid") }
                 val mapped = fakeIp("retained-app-cache.invalid")
@@ -172,6 +202,11 @@ class ProbeCoreLifecycleTest {
                 context.startService(Intent(context, VpnConnectionService::class.java).setAction(VpnConnectionService.ACTION_DISCONNECT))
                 await("DISCONNECTED")
                 assertNull(endpointState.get())
+                if (round == 4) {
+                    Thread.sleep(16_000)
+                    assertTrue("A stopped VPN must never repost its notice", context
+                        .getSystemService(android.app.NotificationManager::class.java).activeNotifications.none { it.id == 1 })
+                }
             }
         } finally {
             context.startService(Intent(context, VpnConnectionService::class.java).setAction(VpnConnectionService.ACTION_DISCONNECT))

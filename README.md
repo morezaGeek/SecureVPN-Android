@@ -14,3 +14,5 @@ Release APK signing currently uses the existing Android debug key for compatibil
 Do not commit upload keystores, passwords, access tokens, user profile databases or exported subscriptions.
 
 History begins with a sanitized 1.3.68 source baseline, followed by the 1.0 release changes. Earlier Android commit history was not present in the Windows repository.
+
+Current display version: **1.0**, versionCode **199**. See ANDROID_PLAY_PREPARATION.md for confirmed store blockers and ChatGPT ChangeLOG.md for changes and test evidence.

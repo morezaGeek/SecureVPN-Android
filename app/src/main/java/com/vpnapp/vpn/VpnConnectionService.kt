@@ -51,6 +51,8 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
     private var useNativeEngine = true
     private val routingLock = Any()
     private val tunnelLock = Any()
+    private val notificationLock = Any()
+    private var notificationMonitor: Job? = null
     private val isConnecting = java.util.concurrent.atomic.AtomicBoolean(false)
     private val isCancellationRequested = java.util.concurrent.atomic.AtomicBoolean(false)
     @Volatile private var serviceDestroyed = false
@@ -233,6 +235,8 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
     }
 
     private fun beginShutdown() {
+        notificationMonitor?.cancel()
+        notificationMonitor = null
         shutdown.begin(cleanup = {
             // Close the service-owned TUN before waiting for Go to release its duplicate.
             synchronized(tunnelLock) {
@@ -253,8 +257,10 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
                     .runningAppProcesses?.firstOrNull { it.pid == Process.myPid() }?.processName
             check(processName == "$packageName:vpn") { "Refusing to terminate the application process" }
             try {
-                stopForeground(STOP_FOREGROUND_REMOVE)
-                getSystemService(NotificationManager::class.java).cancel(NOTIFICATION_ID)
+                synchronized(notificationLock) {
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                    getSystemService(NotificationManager::class.java).cancel(NOTIFICATION_ID)
+                }
                 sendBroadcast(Intent(ACTION_VPN_STATUS).setPackage(packageName).apply {
                     putExtra(EXTRA_STATUS, STATUS_DISCONNECTED)
                     putExtra("closed_worker_pid", Process.myPid())
@@ -487,9 +493,7 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
                 if (VpnNotificationPolicy.shouldRestore(intent.getLongExtra("notification_session", -1),
                     notificationSession, _isRunning.value, isConnecting.get(),
                     serviceDestroyed || isDisconnecting.get() || isCancellationRequested.get())) {
-                    getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID,
-                        createNotification(currentProfileName, currentPublicIp,
-                            if (_isRunning.value) "Connected" else "Connecting", currentCountryCode))
+                    restoreMissingNotification(intent.getLongExtra("notification_session", -1))
                 } else if (!_isRunning.value && !isConnecting.get() && !isDisconnecting.get()) {
                     stopSelf(startId)
                 }
@@ -594,6 +598,37 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
     private var currentProfileName: String = "SecureVPN"
     private var currentProfileId: String? = null
     private var notificationSession = 0L
+
+    // Some devices drop an ongoing notice without delivering its delete PendingIntent.
+    // All protocols share this watchdog; only a live, permitted session may post again.
+    private fun startNotificationMonitor() {
+        notificationMonitor?.cancel()
+        val session = notificationSession
+        notificationMonitor = serviceScope?.launch {
+            while (isActive) {
+                delay(15_000)
+                restoreMissingNotification(session)
+            }
+        }
+    }
+
+    private fun restoreMissingNotification(session: Long) = synchronized(notificationLock) {
+        if (!VpnNotificationPolicy.shouldRestore(session, notificationSession,
+                _isRunning.value, isConnecting.get(),
+                serviceDestroyed || isDisconnecting.get() || isCancellationRequested.get())) return@synchronized
+        val manager = getSystemService(NotificationManager::class.java)
+        if (!manager.areNotificationsEnabled()) return@synchronized
+        if (manager.getNotificationChannel(NOTIFICATION_CHANNEL_ID)?.importance == NotificationManager.IMPORTANCE_NONE)
+            return@synchronized
+        if (manager.activeNotifications.any { it.id == NOTIFICATION_ID }) return@synchronized
+        try {
+            manager.notify(NOTIFICATION_ID, createNotification(currentProfileName, currentPublicIp,
+                if (_isRunning.value) "Connected" else "Connecting", currentCountryCode))
+        } catch (error: RuntimeException) {
+            Log.w(TAG, "Could not restore ongoing VPN notification", error)
+        }
+    }
+
     private var connectionTimeoutJob: Job? = null
     
     private fun connect(profileName: String, serverIp: String, serverPort: Int, username: String, password: String, skipCertVerify: Boolean, bufferSize: Int, tcpNoDelay: Boolean, disableDtls: Boolean = false, mtu: Int = 1200, useNative: Boolean = true) {
@@ -654,10 +689,12 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start foreground service", e)
-            // Even if foreground fails, try to continue? functionality might be limited but better than crash.
-            // But usually VPN requires foreground. 
+            disconnect()
+            return 
         }
         
+        startNotificationMonitor()
+
         // Initialize connection timer (will be set to current time when connected)
         connectionStartTime = 0L
         

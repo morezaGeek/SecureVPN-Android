@@ -115,7 +115,7 @@ fun AddEditProfileScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(BackgroundGradient)
+            .background(CurrentBackground)
             .statusBarsPadding()
             .navigationBarsPadding()
             .imePadding()

@@ -1,0 +1,45 @@
+{
+  "versionName": "1.0",
+  "versionCode": 199,
+  "unitTests": 34,
+  "unitFailures": 0,
+  "instrumentationTests": 6,
+  "apkSha256": "25b4cb4fe09ec39383e354c31638f2013fcfdc19b3b3cf0fdb3e42c6013e029e",
+  "apkBytes": 36073260,
+  "nativeAudit": [
+    {
+      "library": "lib/arm64-v8a/libbox.so",
+      "load_alignment": [
+        16384,
+        16384,
+        16384,
+        16384
+      ],
+      "supports_16kb_alignment": true
+    },
+    {
+      "library": "lib/arm64-v8a/libconscrypt_jni.so",
+      "load_alignment": [
+        4096,
+        4096
+      ],
+      "supports_16kb_alignment": false
+    },
+    {
+      "library": "lib/arm64-v8a/libopenconnect.so",
+      "load_alignment": [
+        4096,
+        4096
+      ],
+      "supports_16kb_alignment": false
+    },
+    {
+      "library": "lib/arm64-v8a/libstoken.so",
+      "load_alignment": [
+        4096,
+        4096
+      ],
+      "supports_16kb_alignment": false
+    }
+  ]
+}

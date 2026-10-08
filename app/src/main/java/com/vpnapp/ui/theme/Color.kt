@@ -3,10 +3,10 @@ package com.vpnapp.ui.theme
 import androidx.compose.ui.graphics.Color
 
 // Primary Dark Theme Colors
-val DarkBackground = Color(0xFF0A0E1A)
-val DarkSurface = Color(0xFF141829)
-val DarkSurfaceVariant = Color(0xFF1E2235)
-val DarkCard = Color(0xFF1A1F35)
+val DarkBackground = Color(0xFF080808)
+val DarkSurface = Color(0xFF121212)
+val DarkSurfaceVariant = Color(0xFF242424)
+val DarkCard = Color(0xFF191919)
 
 // Accent Colors - Cyan to Purple Gradient
 val AccentCyan = Color(0xFF00D9FF)
@@ -29,13 +29,13 @@ val StatusError = DisconnectedRed
 
 // Text Colors
 val TextPrimary = Color(0xFFFFFFFF)
-val TextSecondary = Color(0xFFB4B9C9)
-val TextMuted = Color(0xFF6B7280)
+val TextSecondary = Color(0xFFBDBDBD)
+val TextMuted = Color(0xFF888888)
 
 // Gradient Colors
-val GradientStart = Color(0xFF0A0E1A)
-val GradientMiddle = Color(0xFF0F1629)
-val GradientEnd = Color(0xFF1A1040)
+val GradientStart = Color(0xFF080808)
+val GradientMiddle = Color(0xFF080808)
+val GradientEnd = Color(0xFF080808)
 
 // Map Colors
 val MapLines = Color(0xFF1E3A5F)
@@ -45,7 +45,7 @@ val MapDots = Color(0xFF3B82F6)
 // Button Colors
 val ButtonPrimary = Color(0xFF00D9FF)
 val ButtonPrimaryPressed = Color(0xFF00B8DB)
-val ButtonSecondary = Color(0xFF1E2235)
+val ButtonSecondary = Color(0xFF242424)
 
 // Protocol Colors
 val OpenConnectColor = Color(0xFF00D9FF)
@@ -55,20 +55,20 @@ val SoftEtherColor = Color(0xFF22C55E)
 // ============ LIGHT THEME COLORS ============
 
 // Light Theme Backgrounds
-val LightBackground = Color(0xFFF8FAFC)
+val LightBackground = Color(0xFFFAFAFA)
 val LightSurface = Color(0xFFFFFFFF)
-val LightSurfaceVariant = Color(0xFFF1F5F9)
+val LightSurfaceVariant = Color(0xFFF2F2F2)
 val LightCard = Color(0xFFFFFFFF)
 
 // Light Theme Text Colors
-val LightTextPrimary = Color(0xFF1E293B)
-val LightTextSecondary = Color(0xFF64748B)
-val LightTextMuted = Color(0xFF94A3B8)
+val LightTextPrimary = Color(0xFF212121)
+val LightTextSecondary = Color(0xFF626262)
+val LightTextMuted = Color(0xFF808080)
 
 // Light Gradient Colors
-val LightGradientStart = Color(0xFFF8FAFC)
-val LightGradientMiddle = Color(0xFFEFF6FF)
-val LightGradientEnd = Color(0xFFE0F2FE)
+val LightGradientStart = Color(0xFFFAFAFA)
+val LightGradientMiddle = Color(0xFFFAFAFA)
+val LightGradientEnd = Color(0xFFFAFAFA)
 
 // Light Theme Accent - Dark teal/green for better visibility
 val LightAccentCyan = Color(0xFF0D7377)  // Dark teal for light theme

@@ -62,6 +62,7 @@ private val DarkColorScheme = darkColorScheme(
     onBackground = TextPrimary,
     
     surface = DarkSurface,
+    surfaceTint = DarkSurface,
     onSurface = TextPrimary,
     surfaceVariant = DarkSurfaceVariant,
     onSurfaceVariant = TextSecondary,
@@ -91,6 +92,7 @@ private val LightColorScheme = lightColorScheme(
     onBackground = LightTextPrimary,
     
     surface = LightSurface,
+    surfaceTint = LightSurface,
     onSurface = LightTextPrimary,
     surfaceVariant = LightSurfaceVariant,
     onSurfaceVariant = LightTextSecondary,
@@ -112,9 +114,9 @@ val BackgroundGradient: Brush
 
 val CardGradient: Brush
     @Composable get() = if (isAppInDarkTheme()) {
-        Brush.linearGradient(colors = listOf(DarkCard.copy(alpha = 0.8f), DarkSurfaceVariant.copy(alpha = 0.6f)))
+        Brush.linearGradient(colors = listOf(DarkCard, DarkCard))
     } else {
-        Brush.linearGradient(colors = listOf(LightCard, LightSurfaceVariant.copy(alpha = 0.6f)))
+        Brush.linearGradient(colors = listOf(LightCard, LightCard))
     }
 
 val AccentGradient = Brush.horizontalGradient(

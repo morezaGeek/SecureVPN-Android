@@ -36,7 +36,7 @@ fun LogsScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(BackgroundGradient)
+            .background(CurrentBackground)
             .statusBarsPadding()
             .navigationBarsPadding()
     ) {
