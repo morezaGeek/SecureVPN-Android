@@ -41,5 +41,8 @@
       ],
       "supports_16kb_alignment": false
     }
-  ]
+  ],
+  "independentCheckoutReleaseBuild": "passed offline",
+  "releaseAppearanceSmoke": "passed against minified Release",
+  "overnightPhoneTest": "not performed"
 }

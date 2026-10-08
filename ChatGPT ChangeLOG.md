@@ -28,6 +28,7 @@
 - APK Release با R8 روی شبیه‌ساز نیز اجرا شد؛ runner مستقل از Compose، نسخه1.0 و نبود پروفایل آماده را تأیید و چهار اسکرین‌شات واقعی Home/Settings در Light/Dark را ثبت کرد. عکس‌ها آفلاین و بدون IP واقعی یا کانفیگ کاربر در Android-1.0-Screenshots هستند. مشکل initial manifest ابزار تست با ثبت صریح JUnit runner رفع شد؛ برنامهٔ تولیدی تغییر اضافی نداشت.
 - فایل گوشی SecureVPN-v1.0.apk، arm64-v8a، 36,073,260 بایت، SHA256 `25B4CB4FE09EC39383E354C31638F2013FCFDC19B3B3CF0FDB3E42C6013E029E`. apksigner گواهی قبلی `dfd5d057e7cd895e267b8a2183eb6d7f4e4e5103262bccb8e643a44e025ace62` را تأیید کرد. کد199 از198 بالاتر است؛ ارتقای APK بدون reset نسخه ممکن است. پس‌زمینه و helper بلااستفاده حذف شدند، اندازهٔ APK اندکی کمتر از1.3.68 شد.
 - شواهد: scratch/android-1.0-build.log، android-1.0-instrumentation.log، android-1.0-release-smoke.log و android-1.0-native-audit.json. Play بعد از API36، امضای انتشار و اصلاح native16KB قابل ادامه است.
+- انتشار سورس تأیید شد: دو commit مبنا و تغییرات در main ریپوی خصوصی SecureVPN-Android پوش شدند؛ SHA بررسی‌شدهٔ initial push `0507b8da5efd7f7e2ebc0094243b634a66f1d76b` بود. private بودن پس از push با API دوباره تأیید شد. بیلد مستقل checkout پوش‌شده نیز با JDK17 و dependency pinned، به‌صورت offline پاس شد؛34 آزمون JVM و assembleRelease موفق بودند. راهنمای ادامه و محل checkout در ANDROID_GITHUB.md است.
 
 ## Android 1.3.68 / versionCode198 — اسکن و اشتراک‌گذاری QR و ثبات DNS، 2026-10-08
 
