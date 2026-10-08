@@ -142,6 +142,8 @@ class ProbeCoreLifecycleTest {
                     ?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN) == true
                 while (!vpnReady() && android.os.SystemClock.elapsedRealtime() < readyUntil) Thread.sleep(50)
                 assertTrue("DNS query must enter the Android VPN", vpnReady())
+                assertTrue("The dedicated VPN worker must persist a successful session for the ad counter",
+                    com.vpnapp.ads.AdCycleStore(context).read().successfulSession > 0)
                 if (round == 0) {
                     // Simulate the reported case: the OS drops the notice without a delete callback.
                     val notifications = context.getSystemService(android.app.NotificationManager::class.java)

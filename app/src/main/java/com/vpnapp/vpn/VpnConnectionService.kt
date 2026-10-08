@@ -51,6 +51,13 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
     private var useNativeEngine = true
     private val routingLock = Any()
     private val tunnelLock = Any()
+    private var adSessionRecorded = false
+    private fun recordSuccessfulAdCycleSession() {
+        if (adSessionRecorded || notificationSession <= 0) return
+        runCatching { com.vpnapp.ads.AdCycleStore(this).connected(notificationSession) }
+            .onSuccess { adSessionRecorded = true }
+            .onFailure { Log.w(TAG, "Could not record local ad cycle; VPN unaffected", it) }
+    }
     private val notificationLock = Any()
     private var notificationMonitor: Job? = null
     private val isConnecting = java.util.concurrent.atomic.AtomicBoolean(false)
@@ -261,6 +268,9 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
                     stopForeground(STOP_FOREGROUND_REMOVE)
                     getSystemService(NotificationManager::class.java).cancel(NOTIFICATION_ID)
                 }
+                if (adSessionRecorded) runCatching {
+                    com.vpnapp.ads.AdCycleStore(this).disconnected(notificationSession)
+                }.onFailure { Log.w(TAG, "Could not complete local ad cycle; VPN unaffected", it) }
                 sendBroadcast(Intent(ACTION_VPN_STATUS).setPackage(packageName).apply {
                     putExtra(EXTRA_STATUS, STATUS_DISCONNECTED)
                     putExtra("closed_worker_pid", Process.myPid())
@@ -914,6 +924,7 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
             
             if (vpnInterface != null) {
                 _isRunning.value = true
+                recordSuccessfulAdCycleSession()
                 
                 // Initialize cached output stream for writing received packets to VPN
                 vpnOutputStream = FileOutputStream(vpnInterface!!.fileDescriptor)
@@ -1187,6 +1198,7 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
                                     putExtra(EXTRA_TRANSPORT, "TCP")
                                 })
                                 _isRunning.value = true
+                                recordSuccessfulAdCycleSession()
                                 vpnOutputStream = java.io.FileOutputStream(vpnIf.fileDescriptor)
                                 connectionStartTime = System.currentTimeMillis()
                                 
@@ -1501,6 +1513,7 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
                         
                         connectionStartTime = System.currentTimeMillis()
                         _isRunning.value = true
+                        recordSuccessfulAdCycleSession()
                         
                         // Cancel connection timeout
                         connectionTimeoutJob?.cancel()

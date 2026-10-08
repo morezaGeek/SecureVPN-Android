@@ -64,6 +64,7 @@ fun HomeScreen(
     latencyTestState: LatencyTestState = LatencyTestState(),
     smartPreparing: Boolean = false,
     onCancelSmartConnection: () -> Unit = {},
+    adBanner: @Composable () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var showDeleteDialog by remember { mutableStateOf<VpnProfile?>(null) }
@@ -98,8 +99,8 @@ fun HomeScreen(
                 .fillMaxSize()
                 .statusBarsPadding()
                 .navigationBarsPadding()
-                .verticalScroll(rememberScrollState())
         ) {
+            Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
             // Top bar
             TopAppBar(
                 title = {
@@ -129,6 +130,7 @@ fun HomeScreen(
                     containerColor = Color.Transparent
                 )
             )
+
             
             // Main content
             Column(
@@ -405,6 +407,8 @@ fun HomeScreen(
                 
                 Spacer(modifier = Modifier.height(24.dp))
             }
+            }
+            adBanner()
         }
         
     }

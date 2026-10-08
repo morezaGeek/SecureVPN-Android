@@ -11,8 +11,8 @@ android {
         applicationId = "com.vpnapp"
         minSdk = 26
         targetSdk = 35
-        versionCode = 199
-        versionName = "1.0"
+        versionCode = 200
+        versionName = "1.0.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -91,6 +91,8 @@ repositories {
 }
 
 dependencies {
+    // Compatible with the current Kotlin 1.9 toolchain; upgrade with the Play toolchain migration.
+    implementation("com.google.android.gms:play-services-ads:23.6.0")
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
     implementation("com.google.zxing:core:3.5.3")
     // Sing-box for V2Ray protocols (VLESS, VMess, Trojan, Shadowsocks)

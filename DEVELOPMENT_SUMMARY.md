@@ -9,6 +9,17 @@
 
 > **دسترسی GitHub، به‌روزرسانی2026-10-03:** توکن معتبر جدید فقط در فایل محلی `scratch/github-token.private.txt` است؛ برای Antigravity، مسیر و روش انتشار در [GITHUB_PUBLISH.md](GITHUB_PUBLISH.md) ثبت شده‌اند. مقدار توکن وارد Git نشود؛ از توکن‌های قدیمی یا credential store استفاده نشود.
 
+## Android 1.0.1 / versionCode200 — بنر آزمایشی پس از دو چرخه، 2026-10-08
+
+- طبق تأیید کاربر، بنر کوچک AdMob با demo App ID و fixed-banner ID رسمی Google اضافه شد؛ شناسهٔ درآمدزا یا کانفیگ آمادهٔ VPN اضافه نشده است.
+- دو چرخه فقط با ثبت موفقیت اتصال در worker و خاتمهٔ نشست همان worker حساب می‌شوند. تکرار پیام، خطای قبل از اتصال، status request و کلیک دکمه شمارنده را زیاد نمی‌کنند. AtomicFile+قفل فایل در noBackupFilesDir برای اشتراک امن بین UI و worker به‌کار رفت؛ UI از SharedPreferences cache چندپروسسی برای شمارنده استفاده نمی‌کند.
+- نمایش فقط داخل Home، foreground/RESUMED و DISCONNECTED؛ footer320×50 زیر ناحیهٔ اسکرول است و روی کنترل‌های اتصال نمی‌افتد. در اتصال مجدد/خروج Home/پس‌زمینه destroy می‌شود. اتصال از اعلان تبلیغ یا Activity جدید باز نمی‌کند.
+- حداقل دو دقیقه فاصلهٔ تلاش‌ها،15ثانیه فرصت load پس از SDK init،45ثانیه سقف نمایش، بدون placeholder هنگام خطا. چرخه‌ها با impression واقعی reset می‌شوند؛ failure مصرف نمی‌کند و pending به2 محدود است. Ads از state machine اتصال مستقل‌اند و exception شمارنده سرویس را قطع نمی‌کند.
+- SDK25.5 با Kotlin فعلی به‌دلیل metadata2.3 شکست خورد؛ AAR24.0 نیزmetadata2.1 داشت. برای APK تست23.6 استفاده شد؛ این سری deprecated ولی هنوز sunset نشده است. ارتقای SDK همراه Kotlin/Compose/AGP پیش از Play در ANDROID_ADS.md ثبت شد. AD_ID از merged manifest حذف شد؛ ادعای نبود جمع‌آوری داده توسط SDK نشده است.
+- بسته‌بندی چهار ABI با heap2GB دچار OutOfMemory شد؛ همان بیلد با heap4GB و max-workers=2 پاس شد. این محدودیت ابزار build است، نه crash اپ گوشی. نخستین بیلدهای ناموفق و اصلاحات در لاگ‌های scratch محفوظ‌اند.
+- نتیجهٔ نهایی:39 آزمون JVM بدون شکست،4 آزمون متمایز Android (شمارنده، پنج restart واقعی worker، Home فشرده و بنر) و smoke نسخهٔ minified Release پاس شدند. creative آزمایشی Google واقعاً دریافت و نمایش داده شد؛ در CONNECTING حذف شد و کنترل‌ها فعال ماندند. خطای اولیهٔ SDK «Must be called on main UI thread» با dispatch صریح loadAd و destroy به Main.immediate رفع شد. لاگ‌های نهایی: android-1.0.1-banner-final.log و android-1.0.1-release-smoke.log در scratch.
+- APK1.0.1/code200، arm64-v8a،37,968,749بایت، SHA256 `0B797360E8336757AE6432BEE15602ED72234CB9B7823A4D8F9C9B31821E1DF6`؛ امضای تست قبلی حفظ شده است. افزایش حدود1.81MiB نسبت به1.0 به وابستگی Ads مربوط است. Windows تغییر نکرد. تست شبانه روی گوشی انجام نشده؛ این فایل برای تست است و درآمد تبلیغاتی ندارد.
+
 ## Android 1.0 / versionCode 199 — تم ساده، اعلان و آماده‌سازی انتشار، 2026-10-08
 
 - طبق درخواست کاربر برای اولین انتشار Play، نسخهٔ نمایشی از1.3.68 به1.0 تغییر کرد؛ versionCode از198 به199 افزایش یافت تا APK تست روی نصب قبلی ارتقا پیدا کند. نسخهٔ دسکتاپ تغییر نکرد.

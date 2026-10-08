@@ -6,14 +6,25 @@
 
 ## وضعیت فعلی و دامنهٔ این همکاری
 
-- کار این گفتگو از وضعیت Android **1.3.55 / versionCode 185** شروع شد و آخرین نسخهٔ ساخته‌شده **1.0 / versionCode 199** است.
+- کار این گفتگو از وضعیت Android **1.3.55 / versionCode 185** شروع شد و آخرین نسخهٔ ساخته‌شده **1.0.1 / versionCode 200** است.
 - مرحلهٔ نخست روی **اندروید** تا1.3.65 انجام شد؛ سپس طبق درخواست کاربر توسعهٔ **Windows/Tauri** به2.0.31 و2.0.32 منتقل شد. آزمون‌های اولیهٔ Android با Windows CLI فقط پراکسی محلی داشتند؛ در مرحلهٔ Windows2.0.31، تونل واقعی سیستم نیز آزمایش و پس از هر مورد کاملاً بسته شد.
 - آخرین نصب‌کنندهٔ Windows: [SecureVPN-v2.0.37-Setup.exe](<H:/Antigravity Projects/VPN APP/SecureVPN-v2.0.37-Setup.exe>)، x64، **36,849,111 بایت**، حدود35.14MiB، SHA256 `A3F443DC2A11BF378CFE5C3306228E0C710D11F10C4C436B0348C28D6AAE39ED`. [ریلیز عمومی37](https://github.com/morezaGeek/SecureVPN/releases/tag/v2.0.37) منتشر شد؛ آزمون ارتقای واقعی36به37 هنوز تأیید نشده است.
 - این گزارش تغییرات انجام‌شده در همین همکاری را پوشش می‌دهد. تاریخچهٔ قدیمی‌تر و معماری اولیهٔ پروژه در [DEVELOPMENT_SUMMARY.md](<H:/Antigravity Projects/VPN APP/DEVELOPMENT_SUMMARY.md>) موجود است؛ تمام تغییرات تاریخی آن سند به ChatGPT این گفتگو نسبت داده نشده‌اند.
-- آخرین APK: [SecureVPN-v1.0.apk](<H:/Antigravity Projects/VPN APP/SecureVPN-v1.0.apk>)، arm64-v8a، **36,073,260بایت**، SHA256 `25B4CB4FE09EC39383E354C31638F2013FCFDC19B3B3CF0FDB3E42C6013E029E`. امضای APKهای تست قبلی حفظ شد؛ این فایل هنوز برای Play آماده نیست.
+- آخرین APK: [SecureVPN-v1.0.1.apk](<H:/Antigravity Projects/VPN APP/SecureVPN-v1.0.1.apk>)، arm64-v8a، **37,968,749بایت**، SHA256 `0B797360E8336757AE6432BEE15602ED72234CB9B7823A4D8F9C9B31821E1DF6`. امضای APKهای تست قبلی حفظ شد؛ این فایل هنوز برای Play آماده نیست.
 - در 1.3.63 پینگ فهرست SSTP/OpenConnect و انتخاب مستقل mode برای هر XHTTP اصلاح شدند؛ سیاست Force عمومی همچنان پیش‌فرض روشن است.
 - کاربر عملکرد فرانسه با stream-up را عالی گزارش کرد، سپس خرابی اپ YouTube با وجود بازشدن سایت را مطرح کرد. علت این گزارش هنوز قطعی نیست؛ تست سایت به‌تنهایی تأیید پخش در اپ محسوب نمی‌شود.
 - اصلاح قطع اتصال و وضعیت ابتدایی در 1.3.61 روی شبیه‌ساز با Release تأیید شد: ۱۸ اتصال موفق و قطع کامل. در تست‌های واقعی گوشی 1.3.63 نیز شبکهٔ VPN پس از قطع باقی نماند؛ رفتار تمام گوشی‌ها/Doze تأیید نشده است.
+
+## Android 1.0.1 / versionCode200 — بنر آزمایشی پس از دو چرخه، 2026-10-08
+
+- طبق تأیید کاربر، بنر کوچک AdMob با demo App ID و fixed-banner ID رسمی Google اضافه شد؛ شناسهٔ درآمدزا یا کانفیگ آمادهٔ VPN اضافه نشده است.
+- دو چرخه فقط با ثبت موفقیت اتصال در worker و خاتمهٔ نشست همان worker حساب می‌شوند. تکرار پیام، خطای قبل از اتصال، status request و کلیک دکمه شمارنده را زیاد نمی‌کنند. AtomicFile+قفل فایل در noBackupFilesDir برای اشتراک امن بین UI و worker به‌کار رفت؛ UI از SharedPreferences cache چندپروسسی برای شمارنده استفاده نمی‌کند.
+- نمایش فقط داخل Home، foreground/RESUMED و DISCONNECTED؛ footer320×50 زیر ناحیهٔ اسکرول است و روی کنترل‌های اتصال نمی‌افتد. در اتصال مجدد/خروج Home/پس‌زمینه destroy می‌شود. اتصال از اعلان تبلیغ یا Activity جدید باز نمی‌کند.
+- حداقل دو دقیقه فاصلهٔ تلاش‌ها،15ثانیه فرصت load پس از SDK init،45ثانیه سقف نمایش، بدون placeholder هنگام خطا. چرخه‌ها با impression واقعی reset می‌شوند؛ failure مصرف نمی‌کند و pending به2 محدود است. Ads از state machine اتصال مستقل‌اند و exception شمارنده سرویس را قطع نمی‌کند.
+- SDK25.5 با Kotlin فعلی به‌دلیل metadata2.3 شکست خورد؛ AAR24.0 نیزmetadata2.1 داشت. برای APK تست23.6 استفاده شد؛ این سری deprecated ولی هنوز sunset نشده است. ارتقای SDK همراه Kotlin/Compose/AGP پیش از Play در ANDROID_ADS.md ثبت شد. AD_ID از merged manifest حذف شد؛ ادعای نبود جمع‌آوری داده توسط SDK نشده است.
+- بسته‌بندی چهار ABI با heap2GB دچار OutOfMemory شد؛ همان بیلد با heap4GB و max-workers=2 پاس شد. این محدودیت ابزار build است، نه crash اپ گوشی. نخستین بیلدهای ناموفق و اصلاحات در لاگ‌های scratch محفوظ‌اند.
+- نتیجهٔ نهایی:39 آزمون JVM بدون شکست،4 آزمون متمایز Android (شمارنده، پنج restart واقعی worker، Home فشرده و بنر) و smoke نسخهٔ minified Release پاس شدند. creative آزمایشی Google واقعاً دریافت و نمایش داده شد؛ در CONNECTING حذف شد و کنترل‌ها فعال ماندند. خطای اولیهٔ SDK «Must be called on main UI thread» با dispatch صریح loadAd و destroy به Main.immediate رفع شد. لاگ‌های نهایی: android-1.0.1-banner-final.log و android-1.0.1-release-smoke.log در scratch.
+- APK1.0.1/code200، arm64-v8a،37,968,749بایت، SHA256 `0B797360E8336757AE6432BEE15602ED72234CB9B7823A4D8F9C9B31821E1DF6`؛ امضای تست قبلی حفظ شده است. افزایش حدود1.81MiB نسبت به1.0 به وابستگی Ads مربوط است. Windows تغییر نکرد. تست شبانه روی گوشی انجام نشده؛ این فایل برای تست است و درآمد تبلیغاتی ندارد.
 
 ## Android 1.0 / versionCode 199 — تم ساده، اعلان و آماده‌سازی انتشار، 2026-10-08
 

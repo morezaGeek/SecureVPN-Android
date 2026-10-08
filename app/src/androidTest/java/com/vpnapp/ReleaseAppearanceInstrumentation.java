@@ -43,14 +43,14 @@ public class ReleaseAppearanceInstrumentation extends Instrumentation {
     @Override public void onStart() {
         Bundle result=new Bundle(); Activity activity=null;
         try {
-            if(!"1.0".equals(getTargetContext().getPackageManager().getPackageInfo("com.vpnapp",0).versionName))
+            if(!"1.0.1".equals(getTargetContext().getPackageManager().getPackageInfo("com.vpnapp",0).versionName))
                 throw new AssertionError("Wrong release version");
             if(!getTargetContext().getSharedPreferences("vpn_profiles",0).getString("profiles_json","[]").equals("[]"))
                 throw new AssertionError("Fresh installation contains profiles");
             for(String theme:new String[]{"LIGHT","DARK"}) {
                 getTargetContext().getSharedPreferences("vpn_app_prefs",0).edit().putString("theme_mode",theme).commit();
                 activity=startActivitySync(new Intent().setClassName("com.vpnapp","com.vpnapp.MainActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
-                require("No profiles yet");require("v1.0");
+                require("No profiles yet");require("v1.0.1");
                 screenshot("home-"+theme.toLowerCase());
                 AccessibilityNodeInfo node=require("Settings");
                 while(node!=null&&!node.isClickable())node=node.getParent();
@@ -58,7 +58,7 @@ public class ReleaseAppearanceInstrumentation extends Instrumentation {
                 require("Bypass LAN");screenshot("settings-"+theme.toLowerCase());
                 final Activity closing=activity;runOnMainSync(closing::finish);activity=null;Thread.sleep(400);
             }
-            result.putString("result","Release 1.0 launches empty; light/dark home and settings captured without test profiles.");
+            result.putString("result","Release 1.0.1 launches empty; light/dark home and settings captured without test profiles.");
             finish(Activity.RESULT_OK,result);
         } catch(Throwable error) {
             result.putString("failure",error.toString());finish(Activity.RESULT_CANCELED,result);

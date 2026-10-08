@@ -336,6 +336,7 @@ fun VpnApp(viewModel: VpnViewModel = viewModel()) {
     ) {
         composable("home") {
             HomeScreen(
+                adBanner = { com.vpnapp.ads.ConnectionBanner(connectionInfo.state) },
                 smartPreparing = smartPreparing,
                 onCancelSmartConnection = viewModel::cancelSmartConnection,
                 connectionInfo = connectionInfo,
