@@ -23,6 +23,11 @@
 - باقی‌مانده برای تبلیغ واقعی: پیام رضایت و privacy choices در AdMob/UMP، ارتقای سازگار SDK/toolchain، سیاست حریم خصوصی و Data safety، انتشار/اتصال Store listing، وب‌سایت توسعه‌دهنده و `app-ads.txt`، سپس AdMob readiness review. AdMob اعلام کرد فعال‌شدن اولیهٔ واحد جدید ممکن است تا یک ساعت طول بکشد.
 - منابع بررسی‌شده: [راهنمای UMP اندروید](https://developers.google.com/admob/android/privacy) و [راهنمای بنر اندروید](https://developers.google.com/admob/android/banner).
 
+## Google Play — بررسی نام بسته و آماده‌سازی فرم، 2026-10-08
+
+- نام نمایشی SecureVPN در فرم Create app وارد شد. بررسی Play نشان داد شناسهٔ فعلی `com.vpnapp` و `com.securevpn` قبلاً در Play استفاده شده‌اند؛ candidate `com.rahanetmci.securevpn` آزاد بود، اما تا تأیید مالکیت دامنهٔ `rahanetmci.com` انتخاب/ثبت نشد.
+- فرم Play ارسال نشد و دو اظهارنامهٔ سیاست Play و صادرات رمزنگاری را تیک نزدم. هیچ listing یا AAB بارگذاری و منتشر نشده است. تغییر package یعنی نسخهٔ Play از اپ sideload فعلی جدا نصب می‌شود.
+
 ## Android 1.0.1 / versionCode200 — بنر آزمایشی پس از دو چرخه، 2026-10-08
 
 - طبق تأیید کاربر، بنر کوچک AdMob با demo App ID و fixed-banner ID رسمی Google اضافه شد؛ شناسهٔ درآمدزا یا کانفیگ آمادهٔ VPN اضافه نشده است.

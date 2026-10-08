@@ -479,7 +479,7 @@
 
 ## بررسی شروع Google Play و AdMob — 2026-10-08
 
-- مرورگر به Play Console حساب MRE Developer (Personal) دسترسی داشت؛ فقط Persian & Gregorian Calendar دیده شد، SecureVPN هنوز app record ندارد. فرم Create app بررسی شد ولی ارسال نشد: نام و package ID پایدار، نوع و قیمت اپ، اظهارنامهٔ سیاست‌های Play و تأیید مالک برای قانون صادرات/رمزنگاری لازم است.
+- مرورگر به Play Console حساب MRE Developer (Personal) دسترسی داشت؛ فقط Persian & Gregorian Calendar دیده شد، SecureVPN هنوز app record ندارد. نام SecureVPN در فرم وارد شد. Play اعلام کرد `com.vpnapp` و `com.securevpn` قبلاً استفاده شده‌اند؛ `com.rahanetmci.securevpn` آزاد بود، اما مالکیت دامنهٔ مربوطه هنوز تأیید نشده و هیچ شناسه‌ای ثبت نشد. اظهارنامه‌های سیاست Play و صادرات/رمزنگاری نیز تیک نخورده‌اند.
 - با ورود کاربر به AdMob، اپ SecureVPN و بنر ثبت شدند؛ شناسه‌ها و وضعیت در بخش AdMob بالای همین سند و ANDROID_ADS.md آمده‌اند. شناسه‌های واقعی هنوز وارد APK نشده‌اند و demo IDs در بیلد تست مانده‌اند.
 - پیش‌نیازهای build مانده: target/compile API36، همهٔ nativeها 16KB، upload key/Play App Signing و AAB. APK تست با Android Debug امضا شده و هنوز قابل ارسال نیست.
 - در ANDROID_PLAY_PREPARATION.md وضعیت حساب، مراحل رسمی، مقررات آزمون Closed، VPN declaration، privacy/Data safety، app-ads.txt و موارد نیازمند مالکیت/تأیید صاحب حساب ثبت شده‌اند.
