@@ -1,0 +1,14 @@
+/.gradle/
+/**/build/
+/local.properties
+/app/libs/libbox.aar
+/app/libs/classes.jar
+/scratch/
+/.idea/
+*.apk
+*.aab
+*.keystore
+*.jks
+*.private.*
+key.properties
+.env*

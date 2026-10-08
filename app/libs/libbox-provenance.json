@@ -1,0 +1,9 @@
+{
+  "project": "Leadaxe/sing-box-lx",
+  "version": "1.14.2-lx.11",
+  "release": "https://github.com/Leadaxe/sing-box-lx/releases/tag/v1.14.2-lx.11",
+  "asset": "libbox-1.14.2-lx.11.aar",
+  "sha256": "5c8187b9a9693c72d52135c4ced5cce9028a3208edeb8dc1df74089bc3b3b0cc",
+  "verification": "Matched GitHub release asset SHA-256 digest before replacing libbox.aar",
+  "previousVersion": "1.14.0-lx.21"
+}

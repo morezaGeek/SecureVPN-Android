@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+
+
+
+    <!-- Cyan glow effect around shield -->
+    <path android:fillColor="#00D9FF" android:fillAlpha="0.15" android:pathData="M54,54m-40,0a40,40 0,1 1,80 0a40,40 0,1 1,-80 0"/>
+
+    <!-- Shield shape - large teal -->
+    <path android:fillColor="#00BFA5" android:pathData="M54,18L26,30V52C26,70 37.5,85 54,90C70.5,85 82,70 82,52V30L54,18Z"/>
+
+    <!-- Shield inner gradient effect (left half lighter) -->
+    <path android:fillColor="#00E5CC" android:fillAlpha="0.6" android:pathData="M54,22L30,33V52C30,67 39.5,80 54,85V22Z"/>
+
+    <!-- Globe/Earth icon in center -->
+    <path android:fillColor="#FFFFFF" android:pathData="M54,42m-12,0a12,12 0,1 1,24 0a12,12 0,1 1,-24 0"/>
+
+    <!-- Globe lines - horizontal -->
+    <path android:fillColor="#00BFA5" android:pathData="M43,42h22" android:strokeWidth="1.5" android:strokeColor="#00BFA5"/>
+
+    <!-- Globe center circle -->
+    <path android:fillColor="#00BFA5" android:pathData="M54,42m-6,0a6,6 0,1 1,12 0a6,6 0,1 1,-12 0"/>
+
+    <!-- Checkmark at bottom -->
+    <path android:fillColor="#FFFFFF" android:pathData="M47,62L52,68L64,56" android:strokeWidth="3" android:strokeColor="#FFFFFF" android:strokeLineCap="round" android:strokeLineJoin="round"/>
+</vector>
