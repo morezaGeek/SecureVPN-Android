@@ -14,11 +14,22 @@
 
 ## تنظیمات فعلی و مرحلهٔ واقعی
 
-شناسهٔ demo app در AndroidManifest.xml و شناسهٔ fixed banner در TestAds هستند. مقدارها عمومی و رسمی Google هستند؛ App ID/Ad Unit ID شخصی هنوز دریافت یا فعال نشده است. SDK واسطه/mediation اضافه نشده است.
+بیلد تست فعلی هنوز شناسه‌های رسمی demo گوگل را در AndroidManifest.xml و TestAds دارد؛ روی Ad ID واقعی کلیک یا با آن تست درآمدی انجام نمی‌شود. SDK واسطه/mediation اضافه نشده است.
+
+## حساب واقعی AdMob — آماده‌سازی 2026-10-08
+
+با اجازهٔ کاربر، در حساب AdMob واردشده، اپ اندرویدی **SecureVPN** به‌عنوان اپی که هنوز در Store منتشر نشده ثبت شد و واحد بنر `SecureVPN-Connection-Banner` ساخته شد:
+
+- AdMob App ID: `ca-app-pub-5284715425712192~7524274903`
+- Banner Ad Unit ID: `ca-app-pub-5284715425712192/9988540732`
+- وضعیت: اپ هنوز به Google Play متصل نشده؛ UMP/پیام رضایت، سیاست حریم خصوصی عمومی، Data safety و بررسی آمادگی AdMob تکمیل نشده‌اند. بنابراین این ثبت به‌تنهایی تبلیغ را در نسخهٔ تست فعال یا درآمدزا نمی‌کند.
+- شناسه‌های واقعی عمداً در کد بیلد تست جایگزین نشده‌اند. برای انتشار، باید نسخهٔ تست همچنان از شناسه‌های demo استفاده کند و شناسه‌های زنده فقط در build variant انتشار، پس از آماده‌شدن UMP و افشاهای حریم خصوصی، فعال شوند. تست با شناسهٔ زنده یا کلیک روی آگهی می‌تواند حساب را در معرض ترافیک نامعتبر قرار دهد.
+
+راهنمای رسمی جاری UMP برای Android، نسخهٔ `4.0.0` را پیشنهاد می‌کند و می‌گوید وضعیت رضایت باید در هر شروع برنامه تازه‌سازی و پیش از درخواست آگهی با `canRequestAds()` کنترل شود. AdMob فعلاً پیامی برای مقررات اروپا نساخته است؛ پیش از فعال‌کردن شناسه‌های واقعی باید پیام مناسب ایجاد/منتشر و مسیر مدیریت مجدد privacy choices در اپ فراهم شود. SDK فعلی تبلیغات پروژه نیز `23.6.0` است و به‌خاطر ناسازگاری metadata ارتقای قبلی به `25.5.0` نیاز به ارتقای هماهنگ ابزار Kotlin/Compose دارد.
 
 نسخهٔ25.5.0 در toolchain فعلی Kotlin1.9 به‌دلیل metadata2.3 کامپایل نشد. بررسی AAR رسمی24.0 نیز metadata2.1 نشان داد. APK آزمایشی با23.6.0 سازگار ساخته می‌شود؛ سری23 deprecated است و طبق جدول فعلی Google تا30ژوئن2027 sunset نمی‌شود. **پیش از انتشار واقعی Play، ابزار Kotlin/Compose/AGP و SDK تبلیغات باید به نسخهٔ پشتیبانی‌شده ارتقا یابند**؛ خطای metadata با skip flag دور زده نشده است.
 
-برای فعال‌کردن تبلیغات واقعی: حساب AdMob، شناسه‌ها، readiness/store linking، consent با UMP و گزینهٔ مدیریت حریم خصوصی در مناطق لازم، app-ads.txt/سایت توسعه‌دهنده و اصلاح Data safety/privacy policy انجام شوند. صرف تعویض دو ID برای انتشار کافی نیست. موانع اولیهٔ Play (امضا/API36/native16KB) نیز در ANDROID_PLAY_PREPARATION.md باقی‌اند. درخواست بنر از مسیر معمول اینترنت انجام می‌شود؛ routing کاربران/اپ‌های دیگر برای درآمد تبلیغات تغییر نکرده است.
+برای فعال‌کردن تبلیغات واقعی: readiness/store linking، consent با UMP و گزینهٔ مدیریت حریم خصوصی در مناطق لازم، app-ads.txt/سایت توسعه‌دهنده و اصلاح Data safety/privacy policy انجام شوند. صرف تعویض دو ID برای انتشار کافی نیست. موانع اولیهٔ Play (امضا/API36/native16KB) نیز در ANDROID_PLAY_PREPARATION.md باقی‌اند. درخواست بنر از مسیر معمول اینترنت انجام می‌شود؛ routing کاربران/اپ‌های دیگر برای درآمد تبلیغات تغییر نکرده است.
 
 ## آزمون و منابع
 
@@ -26,6 +37,7 @@
 
 - [Google test IDs](https://developers.google.com/admob/android/test-ads)
 - [Banner integration](https://developers.google.com/admob/android/banner)
+- [UMP consent setup](https://developers.google.com/admob/android/privacy)
 - [SDK release notes](https://developers.google.com/admob/android/rel-notes)
 - [SDK deprecation/sunset](https://developers.google.com/admob/android/deprecation)
 

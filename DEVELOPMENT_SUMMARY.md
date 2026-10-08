@@ -9,6 +9,10 @@
 
 > **دسترسی GitHub، به‌روزرسانی2026-10-03:** توکن معتبر جدید فقط در فایل محلی `scratch/github-token.private.txt` است؛ برای Antigravity، مسیر و روش انتشار در [GITHUB_PUBLISH.md](GITHUB_PUBLISH.md) ثبت شده‌اند. مقدار توکن وارد Git نشود؛ از توکن‌های قدیمی یا credential store استفاده نشود.
 
+## AdMob — وضعیت 2026-10-08
+
+با اجازهٔ کاربر، اپ نمایشی **SecureVPN** و واحد بنر `SecureVPN-Connection-Banner` در AdMob ثبت شده‌اند. App ID: `ca-app-pub-5284715425712192~7524274903`؛ Banner ID: `ca-app-pub-5284715425712192/9988540732`. بیلد تست همچنان از شناسه‌های رسمی demo گوگل استفاده می‌کند. UMP/privacy message، اتصال Play، سیاست حریم خصوصی و Data safety و بررسی AdMob readiness هنوز لازم‌اند؛ جزئیات در [ANDROID_ADS.md](ANDROID_ADS.md) و [ANDROID_PLAY_PREPARATION.md](ANDROID_PLAY_PREPARATION.md) است.
+
 ## Android 1.0.1 / versionCode200 — بنر آزمایشی پس از دو چرخه، 2026-10-08
 
 - طبق تأیید کاربر، بنر کوچک AdMob با demo App ID و fixed-banner ID رسمی Google اضافه شد؛ شناسهٔ درآمدزا یا کانفیگ آمادهٔ VPN اضافه نشده است.
@@ -476,7 +480,7 @@
 ## بررسی شروع Google Play و AdMob — 2026-10-08
 
 - مرورگر به Play Console حساب MRE Developer (Personal) دسترسی داشت؛ فقط Persian & Gregorian Calendar دیده شد، SecureVPN هنوز app record ندارد. فرم Create app بررسی شد ولی ارسال نشد: نام و package ID پایدار، نوع و قیمت اپ، اظهارنامهٔ سیاست‌های Play و تأیید مالک برای قانون صادرات/رمزنگاری لازم است.
-- مرورگر AdMob را به صفحهٔ Sign in / Sign up برد؛ داشبورد ناشر و شناسه‌ها در دسترس نبودند. فعلاً شناسه‌های رسمی demo داخل APK باقی‌اند.
+- با ورود کاربر به AdMob، اپ SecureVPN و بنر ثبت شدند؛ شناسه‌ها و وضعیت در بخش AdMob بالای همین سند و ANDROID_ADS.md آمده‌اند. شناسه‌های واقعی هنوز وارد APK نشده‌اند و demo IDs در بیلد تست مانده‌اند.
 - پیش‌نیازهای build مانده: target/compile API36، همهٔ nativeها 16KB، upload key/Play App Signing و AAB. APK تست با Android Debug امضا شده و هنوز قابل ارسال نیست.
 - در ANDROID_PLAY_PREPARATION.md وضعیت حساب، مراحل رسمی، مقررات آزمون Closed، VPN declaration، privacy/Data safety، app-ads.txt و موارد نیازمند مالکیت/تأیید صاحب حساب ثبت شده‌اند.
 - منابع رسمی بررسی‌شده: Target API36 از 31اوت2026؛ شرط 12 آزمایشگر/14روز برای حساب‌های Personal مشمول؛ الزامات 16KB، VPN، Data safety و AdMob readiness.
