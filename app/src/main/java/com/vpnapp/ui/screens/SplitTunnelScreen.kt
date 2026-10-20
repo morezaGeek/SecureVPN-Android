@@ -1,7 +1,5 @@
 package com.vpnapp.ui.screens
 
-import android.content.pm.ApplicationInfo
-import android.content.pm.PackageManager
 import android.graphics.drawable.Drawable
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -45,24 +43,17 @@ fun SplitTunnelScreen(
     var isLoading by remember { mutableStateOf(true) }
     var searchQuery by remember { mutableStateOf("") }
     
-    // Load installed apps
+    // Load apps that expose a launcher entry; this keeps package visibility scoped.
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
             val pm = context.packageManager
             // Get all apps that have a launcher activity (visible in app drawer)
             val launchIntent = android.content.Intent(android.content.Intent.ACTION_MAIN, null)
             launchIntent.addCategory(android.content.Intent.CATEGORY_LAUNCHER)
-            val launchableApps = pm.queryIntentActivities(launchIntent, 0)
-                .map { it.activityInfo.packageName }
-                .toSet()
-            
-            val apps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
-                .filter { appInfo ->
-                    if (appInfo.packageName == context.packageName) return@filter false
-                    val isUserApp = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) == 0 ||
-                                    (appInfo.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
-                    isUserApp || appInfo.packageName in launchableApps
-                }
+            val apps = pm.queryIntentActivities(launchIntent, 0)
+                .mapNotNull { it.activityInfo?.applicationInfo }
+                .distinctBy { it.packageName }
+                .filter { appInfo -> appInfo.packageName != context.packageName }
                 .map { appInfo ->
                     AppInfo(
                         packageName = appInfo.packageName,

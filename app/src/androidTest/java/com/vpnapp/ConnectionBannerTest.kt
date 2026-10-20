@@ -17,7 +17,7 @@ import org.junit.Test
 class ConnectionBannerTest {
     @get:Rule val compose = createComposeRule()
 
-    @Test fun googleDemoBannerEitherLoadsOrSkipsWithoutBlockingConnectionControls() {
+    @Test fun configuredBannerEitherLoadsOrSkipsWithoutBlockingConnectionControls() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val directory = java.io.File(context.noBackupFilesDir, "ad-cycles").apply { mkdirs() }
@@ -29,7 +29,7 @@ class ConnectionBannerTest {
         counter.writeText("{\"successfulSession\":0,\"completedCycles\":2,\"lastAttemptMillis\":0}")
         try {
             compose.setContent {
-                VPNAppTheme { Column { Text("Connection controls remain available"); ConnectionBanner(state.value) } }
+                VPNAppTheme { Column { Text("Connection controls remain available"); ConnectionBanner(state.value, allowAds = true) } }
             }
             compose.onNodeWithText("Connection controls remain available").assertIsDisplayed()
             val deadline = android.os.SystemClock.elapsedRealtime() + 50_000

@@ -1,0 +1,144 @@
+{
+  "bundle": "app-release.aab",
+  "bytes": 139194900,
+  "sha256": "6dd7186fbf58b48f9d013605e62cb1ee08cb3c2fae45c7e7546f0b9cb6b7be8d",
+  "libraries": [
+    {
+      "library": "base/lib/arm64-v8a/libbox.so",
+      "load_alignment": [
+        16384,
+        16384,
+        16384,
+        16384
+      ],
+      "elf_load_alignment_16kb": true
+    },
+    {
+      "library": "base/lib/arm64-v8a/libconscrypt_jni.so",
+      "load_alignment": [
+        4096,
+        4096
+      ],
+      "elf_load_alignment_16kb": false
+    },
+    {
+      "library": "base/lib/arm64-v8a/libopenconnect.so",
+      "load_alignment": [
+        4096,
+        4096
+      ],
+      "elf_load_alignment_16kb": false
+    },
+    {
+      "library": "base/lib/arm64-v8a/libstoken.so",
+      "load_alignment": [
+        4096,
+        4096
+      ],
+      "elf_load_alignment_16kb": false
+    },
+    {
+      "library": "base/lib/armeabi-v7a/libbox.so",
+      "load_alignment": [
+        4096,
+        4096,
+        4096,
+        4096
+      ],
+      "elf_load_alignment_16kb": false
+    },
+    {
+      "library": "base/lib/armeabi-v7a/libconscrypt_jni.so",
+      "load_alignment": [
+        4096,
+        4096
+      ],
+      "elf_load_alignment_16kb": false
+    },
+    {
+      "library": "base/lib/armeabi-v7a/libopenconnect.so",
+      "load_alignment": [
+        4096,
+        4096
+      ],
+      "elf_load_alignment_16kb": false
+    },
+    {
+      "library": "base/lib/armeabi-v7a/libstoken.so",
+      "load_alignment": [
+        4096,
+        4096
+      ],
+      "elf_load_alignment_16kb": false
+    },
+    {
+      "library": "base/lib/x86/libbox.so",
+      "load_alignment": [
+        4096,
+        4096,
+        4096,
+        4096
+      ],
+      "elf_load_alignment_16kb": false
+    },
+    {
+      "library": "base/lib/x86/libconscrypt_jni.so",
+      "load_alignment": [
+        4096,
+        4096
+      ],
+      "elf_load_alignment_16kb": false
+    },
+    {
+      "library": "base/lib/x86/libopenconnect.so",
+      "load_alignment": [
+        4096,
+        4096
+      ],
+      "elf_load_alignment_16kb": false
+    },
+    {
+      "library": "base/lib/x86/libstoken.so",
+      "load_alignment": [
+        4096,
+        4096
+      ],
+      "elf_load_alignment_16kb": false
+    },
+    {
+      "library": "base/lib/x86_64/libbox.so",
+      "load_alignment": [
+        16384,
+        16384,
+        16384,
+        16384
+      ],
+      "elf_load_alignment_16kb": true
+    },
+    {
+      "library": "base/lib/x86_64/libconscrypt_jni.so",
+      "load_alignment": [
+        4096,
+        4096
+      ],
+      "elf_load_alignment_16kb": false
+    },
+    {
+      "library": "base/lib/x86_64/libopenconnect.so",
+      "load_alignment": [
+        4096,
+        4096
+      ],
+      "elf_load_alignment_16kb": false
+    },
+    {
+      "library": "base/lib/x86_64/libstoken.so",
+      "load_alignment": [
+        4096,
+        4096
+      ],
+      "elf_load_alignment_16kb": false
+    }
+  ],
+  "note": "ELF load alignment only; does not establish 16KB runtime compatibility."
+}

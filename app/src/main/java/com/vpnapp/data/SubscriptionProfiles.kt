@@ -35,5 +35,6 @@ object SubscriptionProfiles {
     private fun sameEndpoint(a: VpnProfile, b: VpnProfile): Boolean =
         XHttpSmartPolicy.sameConnection(a, b) && a.username == b.username && a.password == b.password &&
             a.hysteriaObfs == b.hysteriaObfs && a.hysteriaObfsPassword == b.hysteriaObfsPassword &&
+            a.hysteriaObfsMinPacketSize == b.hysteriaObfsMinPacketSize && a.hysteriaObfsMaxPacketSize == b.hysteriaObfsMaxPacketSize &&
             (XHttpModePolicy.isXHttp(a) || a.v2rayType == b.v2rayType)
 }

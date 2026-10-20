@@ -54,12 +54,71 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
     private var adSessionRecorded = false
     private fun recordSuccessfulAdCycleSession() {
         if (adSessionRecorded || notificationSession <= 0) return
+        runCatching { usage.record(usageSession,0,0,connectionStartTime) }
         runCatching { com.vpnapp.ads.AdCycleStore(this).connected(notificationSession) }
             .onSuccess { adSessionRecorded = true }
             .onFailure { Log.w(TAG, "Could not record local ad cycle; VPN unaffected", it) }
     }
     private val notificationLock = Any()
     private var notificationMonitor: Job? = null
+    private var sessionMonitor: Job? = null
+    private var lanProxy: LanVpnProxy? = null
+    private var lanNetwork: android.net.Network? = null
+    private var lanConfig: LanShareSettings? = null
+    private var lanStartError: String? = null
+    private val lanLock=Any()
+    @Volatile private var runtimeLan: LanShareSettings? = null
+    @Volatile private var runtimeDns: com.vpnapp.vpn.singbox.TunnelDnsSettings? = null
+    private val usage by lazy { com.vpnapp.data.UsageHistory(this) }
+    private var systemManaged = false
+    private var usageSession = java.util.UUID.randomUUID().toString()
+    private fun counters(): Pair<Long,Long> = singBoxEngine?.trafficTotals() ?: (rxBytes.get() to txBytes.get())
+    private fun recordUsage() {
+        if(connectionStartTime <= 0) return
+        val (rx,tx)=counters()
+        runCatching { usage.record(usageSession,rx,tx) }.onFailure { Log.w(TAG,"Usage checkpoint failed",it) }
+    }
+    private fun syncLanProxy() = synchronized(lanLock) {
+        val config=runtimeLan ?: LanShareSettings.read(this)
+        val cm=getSystemService(android.net.ConnectivityManager::class.java)
+        val network=if (_isRunning.value && config.enabled && !isDisconnecting.get() && !isCancellationRequested.get() && !serviceDestroyed) cm.allNetworks.firstOrNull {
+            cm.getNetworkCapabilities(it)?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN)==true
+        } else null
+        if(config==lanConfig && network==lanNetwork && (network==null || lanProxy!=null)) {
+            publishLanStatus(config)
+            return
+        }
+        runCatching { lanProxy?.close() };lanProxy=null;lanNetwork=network;lanConfig=config
+        lanStartError=null
+        if(network!=null) runCatching { lanProxy=LanVpnProxy(config,network,protectClient={ protect(it) }) }
+            .onFailure { Log.w(TAG,"LAN proxy could not start",it)
+                lanStartError="Could not open this proxy port. Choose another port and save, or reconnect VPN."
+                sendBroadcast(Intent(ACTION_VPN_STATUS).setPackage(packageName).putExtra(EXTRA_STATUS,"LOG")
+                    .putExtra("message","LAN sharing could not start: ${it.message}")) }
+        publishLanStatus(config)
+    }
+    private fun publishLanStatus(config: LanShareSettings = runtimeLan ?: LanShareSettings.read(this)) {
+        val proxy=lanProxy
+        val status=when {
+            !config.enabled -> LanProxyStatus("OFF",config.protocol.name,config.port)
+            isDisconnecting.get() || isCancellationRequested.get() || serviceDestroyed -> LanProxyStatus("OFF",config.protocol.name,config.port)
+            proxy!=null -> proxy.status()
+            lanStartError!=null -> LanProxyStatus("ERROR",config.protocol.name,config.port,lastError=lanStartError)
+            else -> LanProxyStatus("WAITING",config.protocol.name,config.port)
+        }
+        sendBroadcast(Intent(ACTION_LAN_SHARE_STATUS).setPackage(packageName).also(status::writeTo))
+    }
+    private fun startSessionMonitor() {
+        sessionMonitor?.cancel()
+        sessionMonitor=serviceScope?.launch {
+            while(isActive) {
+                delay(5000)
+                recordUsage()
+                runCatching { syncLanProxy() }.onFailure { Log.w(TAG,"LAN sharing update failed",it) }
+            }
+        }
+    }
+
     private val isConnecting = java.util.concurrent.atomic.AtomicBoolean(false)
     private val isCancellationRequested = java.util.concurrent.atomic.AtomicBoolean(false)
     @Volatile private var serviceDestroyed = false
@@ -99,14 +158,7 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
     private fun startStatsBroadcaster() {
         stopStatsBroadcaster() // clear any existing job
         
-        // For V2Ray/sing-box, we need to use TrafficStats API since we don't track packets directly
-        val isV2Ray = currentProtocol in listOf(VpnProtocol.VLESS, VpnProtocol.VMESS, VpnProtocol.TROJAN, VpnProtocol.SHADOWSOCKS)
-        if (isV2Ray) {
-            // Reset baseline for V2Ray connections
-            baselineRxBytes = TrafficStats.getTotalRxBytes()
-            baselineTxBytes = TrafficStats.getTotalTxBytes()
-        }
-        
+        val isV2Ray = singBoxEngine != null
         statsBroadcasterJob = serviceScope?.launch {
             Log.d(TAG, "Stats Broadcaster started (V2Ray=$isV2Ray)")
             while (_isRunning.value) {
@@ -117,9 +169,10 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
                 val transport: String
                 
                 if (isV2Ray) {
-                    // For V2Ray, use TrafficStats API
-                    rx = TrafficStats.getTotalRxBytes() - baselineRxBytes
-                    tx = TrafficStats.getTotalTxBytes() - baselineTxBytes
+                    val totals=counters()
+                    rx=totals.first
+                    tx=totals.second
+                    rxBytes.set(rx);txBytes.set(tx)
                     transport = when (v2rayProfile?.v2rayNetwork?.lowercase()) {
                         "ws", "websocket" -> "WebSocket"
                         "grpc" -> "gRPC"
@@ -242,6 +295,13 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
     }
 
     private fun beginShutdown() {
+        recordUsage()
+        sessionMonitor?.cancel();sessionMonitor=null
+        synchronized(lanLock) {
+            runCatching { lanProxy?.close() };lanProxy=null
+            publishLanStatus()
+        }
+
         notificationMonitor?.cancel()
         notificationMonitor = null
         shutdown.begin(cleanup = {
@@ -327,6 +387,10 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
         const val ACTION_DISCONNECT = "com.vpnapp.DISCONNECT"
         const val ACTION_VPN_STATUS = "com.vpnapp.VPN_STATUS"
         const val ACTION_VPN_STATS = "com.vpnapp.VPN_STATS" // New stats broadcast
+        const val ACTION_PROTECTION_STATE = "com.vpnapp.PROTECTION_STATE"
+        const val ACTION_LAN_SHARE_CONFIG = "com.vpnapp.LAN_SHARE_CONFIG"
+        const val ACTION_LAN_SHARE_STATUS = "com.vpnapp.LAN_SHARE_STATUS"
+        const val ACTION_LAN_SHARE_STATUS_REQUEST = "com.vpnapp.LAN_SHARE_STATUS_REQUEST"
         const val ACTION_REQUEST_STATE = "com.vpnapp.REQUEST_STATE"
         const val ACTION_UPDATE_ROUTING = "com.vpnapp.UPDATE_ROUTING"
         const val ACTION_RESTORE_NOTIFICATION = "com.vpnapp.RESTORE_NOTIFICATION"
@@ -405,14 +469,31 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
     }
     
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        sendBroadcast(Intent(ACTION_PROTECTION_STATE).setPackage(packageName)
+            .putExtra("always_on", Build.VERSION.SDK_INT >= 29 && isAlwaysOn)
+            .putExtra("lockdown", Build.VERSION.SDK_INT >= 29 && isLockdownEnabled))
+        if (intent == null || intent.action == SERVICE_INTERFACE) {
+            systemManaged=true
+            val restored=LastVpnConnection.restore(this)
+            if(restored!=null) return onStartCommand(restored,flags,startId)
+            // Android's lockdown remains active. Ask for setup rather than connecting a guessed profile.
+            val notice=createNotification("SecureVPN","","Open app and connect a profile")
+            if(Build.VERSION.SDK_INT>=34) startForeground(NOTIFICATION_ID,notice,ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+            else startForeground(NOTIFICATION_ID,notice)
+            stopForeground(STOP_FOREGROUND_REMOVE);stopSelf(startId)
+            return START_NOT_STICKY
+        }
         when (intent?.action) {
             ACTION_CONNECT -> {
+                runtimeDns=com.vpnapp.vpn.singbox.TunnelDnsSettings.read(intent)
+                runtimeLan=LanShareSettings.fromIntent(intent)
                 // CRITICAL: Guard against double-tap at the EARLIEST point
                 if (isConnecting.get() || _isRunning.value || isDisconnecting.get()) {
                     Log.w(TAG, "Connection already in progress or running. Ignoring duplicate ACTION_CONNECT.")
                     return START_NOT_STICKY
                 }
                 isConnecting.set(true)
+                runCatching { LastVpnConnection.save(this,intent) }
                 currentProfileId = intent.getStringExtra(EXTRA_PROFILE_ID)
                 notificationSession = android.os.SystemClock.elapsedRealtimeNanos()
                 
@@ -471,6 +552,9 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
                         v2rayFlow = v2rayFlow,
                         v2rayPbk = v2rayPbk,
                         v2rayShortId = v2raySid,
+                        v2rayEch = intent.getStringExtra("v2ray_ech") ?: "",
+                        hysteriaObfsMinPacketSize = intent.getIntExtra("hysteria_obfs_min", 512),
+                        hysteriaObfsMaxPacketSize = intent.getIntExtra("hysteria_obfs_max", 1200),
                         hysteriaObfs = intent.getStringExtra("hysteria_obfs") ?: "none",
                         hysteriaObfsPassword = intent.getStringExtra("hysteria_obfs_password") ?: "",
                         mtu = intent.getIntExtra(EXTRA_MTU, 1400),
@@ -494,6 +578,18 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
                 
                 connect(profileName, serverIp, serverPort, username, password, skipCertVerify, bufferSize, tcpNoDelay, disableDtls, mtu, useNative)
             }
+            ACTION_LAN_SHARE_CONFIG -> {
+                runtimeLan=LanShareSettings.fromIntent(intent) ?: runtimeLan
+                serviceScope?.launch { syncLanProxy() }
+                if(!_isRunning.value && !isConnecting.get()) stopSelf(startId)
+            }
+            ACTION_LAN_SHARE_STATUS_REQUEST -> {
+                // Read-only status request must never reconnect or keep an idle worker alive.
+                if(_isRunning.value) syncLanProxy() else {
+                    publishLanStatus()
+                    if(!isConnecting.get()) stopSelf(startId)
+                }
+            }
             ACTION_DISCONNECT -> {
                 disconnect()
             }
@@ -509,6 +605,7 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
                 }
             }
             ACTION_UPDATE_ROUTING -> {
+                runtimeDns=com.vpnapp.vpn.singbox.TunnelDnsSettings.read(intent) ?: runtimeDns
                 serviceScope?.launch {
                     // Reload operations run serially with engine start/stop.
                     synchronized(routingLock) {
@@ -520,7 +617,10 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
                         val updated = profile.copy(bypassIranRoutes = currentBypassIran, bypassPrivateIps = currentBypassPrivateIps)
                         v2rayProfile = updated
                         try {
-                            if (singBoxEngine?.isRunning() == true) singBoxEngine?.reloadRouting(updated)
+                            if (singBoxEngine?.isRunning() == true) {
+                                singBoxEngine?.runtimeDns=runtimeDns
+                                singBoxEngine?.reloadRouting(updated)
+                            }
                         } catch (e: Exception) {
                             sendBroadcast(Intent(ACTION_VPN_STATUS).setPackage(packageName).apply {
                                 putExtra(EXTRA_STATUS, STATUS_ERROR)
@@ -583,7 +683,7 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
                 Log.d(TAG, "GeoInfo updated in Service: IP=$currentPublicIp, Country=$currentCountryCode")
             }
         }
-        return START_NOT_STICKY
+        return if (systemManaged || (Build.VERSION.SDK_INT >= 29 && isAlwaysOn)) START_STICKY else START_NOT_STICKY
     }
     
     private fun createNotificationChannel() {
@@ -617,7 +717,7 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
         notificationMonitor = serviceScope?.launch {
             while (isActive) {
                 delay(15_000)
-                restoreMissingNotification(session)
+                runCatching { restoreMissingNotification(session) }.onFailure { Log.w(TAG,"Notification watchdog retry",it) }
             }
         }
     }
@@ -630,10 +730,13 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
         if (!manager.areNotificationsEnabled()) return@synchronized
         if (manager.getNotificationChannel(NOTIFICATION_CHANNEL_ID)?.importance == NotificationManager.IMPORTANCE_NONE)
             return@synchronized
-        if (manager.activeNotifications.any { it.id == NOTIFICATION_ID }) return@synchronized
+        if (manager.activeNotifications.any { it.id == NOTIFICATION_ID &&
+                it.notification.flags and Notification.FLAG_FOREGROUND_SERVICE != 0 && it.isOngoing }) return@synchronized
         try {
-            manager.notify(NOTIFICATION_ID, createNotification(currentProfileName, currentPublicIp,
-                if (_isRunning.value) "Connected" else "Connecting", currentCountryCode))
+            val notice=createNotification(currentProfileName,currentPublicIp,
+                if (_isRunning.value) "Connected" else "Connecting",currentCountryCode)
+            if(Build.VERSION.SDK_INT>=34) startForeground(NOTIFICATION_ID,notice,ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+            else startForeground(NOTIFICATION_ID,notice)
         } catch (error: RuntimeException) {
             Log.w(TAG, "Could not restore ongoing VPN notification", error)
         }
@@ -642,6 +745,8 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
     private var connectionTimeoutJob: Job? = null
     
     private fun connect(profileName: String, serverIp: String, serverPort: Int, username: String, password: String, skipCertVerify: Boolean, bufferSize: Int, tcpNoDelay: Boolean, disableDtls: Boolean = false, mtu: Int = 1200, useNative: Boolean = true) {
+        usageSession=java.util.UUID.randomUUID().toString()
+        rxBytes.set(0);txBytes.set(0)
         currentMtu = mtu
         currentProfileName = profileName
         currentPublicIp = serverIp // Use server IP as public IP until we get actual gateway
@@ -704,6 +809,7 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
         }
         
         startNotificationMonitor()
+        startSessionMonitor()
 
         // Initialize connection timer (will be set to current time when connected)
         connectionStartTime = 0L
@@ -1011,329 +1117,14 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
             // Check protocol and route accordingly
 
             if (useNative) {
-                val engine = com.vpnapp.vpn.openconnect.NativeOpenConnectEngine(
-                    serverAddress = serverIp,
-                    serverPort = serverPort,
-                    username = username,
-                    password = password,
-                    skipCertVerify = skipCertVerify,
-                    mtu = mtu,
-                    disableDtls = disableDtls,
-                    bufferSize = bufferSize,
-                    tcpNoDelay = tcpNoDelay,
-                    protectCallback = { fd -> protect(fd) }
-                )
-                this.nativeOpenConnectEngine = engine
+                val profile = VpnProfile(id=currentProfileId ?: "openconnect", name=currentProfileName,
+                    serverAddress=serverIp, port=serverPort, protocol=VpnProtocol.OPENCONNECT,
+                    username=username, password=password, skipCertificateVerification=skipCertVerify,
+                    disableDtls=disableDtls, mtu=mtu, bypassIranRoutes=currentBypassIran,
+                    bypassPrivateIps=currentBypassPrivateIps)
+                v2rayProfile=profile
+                connectV2Ray(profile)
 
-                val requestedMtu = mtu
-                val callback = object : com.vpnapp.vpn.openconnect.OpenConnectEngine.OpenConnectCallback {
-                    override fun onLog(message: String) {
-                        Log.d(TAG, "NativeOpenConnect: $message")
-                        FileLogger.write("NativeOpenConnect: $message") // Added for debugging
-                        sendBroadcast(Intent(ACTION_VPN_STATUS).setPackage(packageName).apply {
-                            putExtra(EXTRA_STATUS, "LOG")
-                            putExtra("message", message)
-                        })
-                    }
-
-                    override fun onError(message: String) {
-                        Log.e(TAG, "NativeOpenConnect Error: $message")
-                        FileLogger.write("NativeOpenConnect Error: $message") // Added for debugging
-                        sendBroadcast(Intent(ACTION_VPN_STATUS).setPackage(packageName).apply {
-                            putExtra(EXTRA_STATUS, STATUS_ERROR)
-                            putExtra("message", message)
-                        })
-                        disconnect()
-                    }
-
-                    override fun onConnected(privateIp: String, serverIpAddr: String, dnsServers: List<String>, mtu: Int, splitExcludes: List<String>, splitIncludes: List<String>) {
-                        Log.d(TAG, "NativeOpenConnect Connected. IP: $privateIp, Server: $serverIpAddr, MTU: $mtu")
-                        
-                        // CRITICAL: Cancel the connection timeout immediately
-                        connectionTimeoutJob?.cancel()
-                        connectionTimeoutJob = null
-                        isConnecting.set(false)
-                        
-                        _privateIp.value = privateIp
-                        _serverIp.value = serverIpAddr
-                        currentPublicIp = ""
-
-                        try {
-                            // Honor the requested MTU within the negotiated CSTP limit.
-                            // libopenconnect handles DTLS sizing and CSTP fallback internally.
-                            val safeMtu = minOf(requestedMtu, mtu)
-                            currentMtu = safeMtu
-                            
-                            Log.d(TAG, "Server MTU: $mtu, DTLS: ${!disableDtls}, VPN MTU: $safeMtu")
-                            FileLogger.write("Server MTU: $mtu, DTLS: ${!disableDtls}, VPN MTU: $safeMtu")
-                            
-                            // Broadcast MTU change to UI for visibility
-                            sendBroadcast(Intent(ACTION_VPN_STATUS).setPackage(packageName).apply {
-                                putExtra(EXTRA_STATUS, "LOG")
-                                putExtra("message", "[v3.16.3] MTU: Server=$mtu, DTLS=${!disableDtls} â†’ VPN=$safeMtu")
-                            })
-                            
-                            val builder = Builder()
-                                .setSession("SecureVPN - $serverIpAddr")
-                                .addAddress(privateIp, 32) // Use /32 for point-to-point VPN
-                                .setMtu(safeMtu) // Use conservative MTU for compatibility
-                                .setBlocking(true)
-                            
-                            // SPLIT ROUTING: Apply server's no-route configuration
-                            // If server sends split includes (specific routes), use those
-                            // If server sends split excludes (no-route), use default route and exclude those
-                            if (splitIncludes.isNotEmpty()) {
-                                // Split tunnel mode: only route specified networks through VPN
-                                Log.d(TAG, "Using split includes from server: ${splitIncludes.size} routes")
-                                FileLogger.write("Split includes: ${splitIncludes.joinToString(", ")}")
-                                splitIncludes.forEach { route ->
-                                    try {
-                                        val parts = route.split("/")
-                                        if (parts.size == 2) {
-                                            builder.addRoute(parts[0], parts[1].toInt())
-                                            Log.d(TAG, "Added route: $route")
-                                        }
-                                    } catch (e: Exception) {
-                                        Log.w(TAG, "Failed to add route $route: ${e.message}")
-                                    }
-                                }
-                            } else {
-                                // Full tunnel mode: route all through VPN
-                                builder.addRoute("0.0.0.0", 0)
-                            }
-                            
-                            // Apply exclude routes (no-route from server)
-                            // Server sends format: IP/NETMASK (e.g., 192.168.0.0/255.255.0.0)
-                            // We need to convert NETMASK to PREFIX LENGTH
-                            if (splitExcludes.isNotEmpty()) {
-                                Log.d(TAG, "Applying ${splitExcludes.size} exclude routes from server")
-                                FileLogger.write("Split excludes (no-route): first 5 = ${splitExcludes.take(5).joinToString(", ")}")
-                                
-                                sendBroadcast(Intent(ACTION_VPN_STATUS).setPackage(packageName).apply {
-                                    putExtra(EXTRA_STATUS, "LOG")
-                                    putExtra("message", "Applying ${splitExcludes.size} exclude routes from server")
-                                })
-                                
-                                var successCount = 0
-                                var failCount = 0
-                                splitExcludes.forEach { route ->
-                                    try {
-                                        val parts = route.split("/")
-                                        if (parts.size == 2) {
-                                            val ip = parts[0]
-                                            val prefixLength = netmaskToPrefixLength(parts[1])
-                                            if (prefixLength > 0) {
-                                                val ipPrefix = android.net.IpPrefix(java.net.InetAddress.getByName(ip), prefixLength)
-                                                builder.excludeRoute(ipPrefix)
-                                                successCount++
-                                            } else {
-                                                failCount++
-                                            }
-                                        }
-                                    } catch (e: Exception) {
-                                        failCount++
-                                        Log.w(TAG, "Failed to exclude route $route: ${e.message}")
-                                    }
-                                }
-                                Log.d(TAG, "Exclude routes: $successCount success, $failCount failed")
-                                FileLogger.write("Exclude routes applied: $successCount success, $failCount failed")
-                            }
-
-                            // Exclude private IP ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16) on Android 13+ if the LAN switch is enabled
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && currentBypassPrivateIps) {
-                                listOf("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16").forEach { route ->
-                                    try {
-                                        val parts = route.split("/")
-                                        val ipPrefix = android.net.IpPrefix(java.net.InetAddress.getByName(parts[0]), parts[1].toInt())
-                                        builder.excludeRoute(ipPrefix)
-                                        Log.d(TAG, "OpenConnect excluded private route: $route")
-                                    } catch (e: Exception) {
-                                        Log.w(TAG, "Failed to exclude private route $route in OpenConnect: ${e.message}")
-                                    }
-                                }
-                            }
-                            
-                            // Add DNS servers from server, with fallback to public DNS
-                            Log.d(TAG, "DNS servers from server: $dnsServers")
-                            FileLogger.write("DNS servers from server: $dnsServers")
-                            
-                            if (dnsServers.isNotEmpty()) {
-                                dnsServers.forEach { dns ->
-                                    try {
-                                        builder.addDnsServer(dns)
-                                        Log.d(TAG, "Added DNS: $dns")
-                                    } catch (e: Exception) {
-                                        Log.w(TAG, "Failed to add DNS $dns: ${e.message}")
-                                    }
-                                }
-                            }
-                            
-                            // ALWAYS add public DNS as fallback to ensure name resolution works
-                            try {
-                                builder.addDnsServer("8.8.8.8")
-                                builder.addDnsServer("1.1.1.1")
-                                Log.d(TAG, "Added fallback DNS: 8.8.8.8, 1.1.1.1")
-                            } catch (e: Exception) {
-                                Log.w(TAG, "Failed to add fallback DNS: ${e.message}")
-                            }
-                            
-                            // Native control sockets are individually protected. Keep UI probes in the tunnel.
-                            currentExcludedApps.forEach { appPackage ->
-                                try { builder.addDisallowedApplication(appPackage) }
-                                catch (e: Exception) { Log.w(TAG, "Could not exclude app: $appPackage") }
-                            }
-                            
-                            val vpnIf = builder.establish()
-                            
-                            if (vpnIf != null) {
-                                vpnInterface = vpnIf
-                                sendBroadcast(Intent(ACTION_VPN_STATUS).setPackage(packageName).apply {
-                                    putExtra(EXTRA_STATUS, STATUS_CONNECTED)
-                        putExtra(EXTRA_PROFILE_ID, currentProfileId)
-                        putExtra(EXTRA_PROFILE_NAME, currentProfileName)
-                        putExtra(EXTRA_PROTOCOL, currentProtocol.name)
-                                    putExtra(EXTRA_PRIVATE_IP, privateIp)
-                                    putExtra(EXTRA_SERVER_IP, serverIpAddr)
-                                    putExtra(EXTRA_MTU, safeMtu)
-                                    putExtra(EXTRA_TRANSPORT, "TCP")
-                                })
-                                _isRunning.value = true
-                                recordSuccessfulAdCycleSession()
-                                vpnOutputStream = java.io.FileOutputStream(vpnIf.fileDescriptor)
-                                connectionStartTime = System.currentTimeMillis()
-                                
-                                baselineRxBytes = TrafficStats.getUidRxBytes(Process.myUid())
-                                baselineTxBytes = TrafficStats.getUidTxBytes(Process.myUid())
-                                FileLogger.write("Baseline stats: RX=$baselineRxBytes TX=$baselineTxBytes")
-                                
-                                val notificationManager = getSystemService(android.app.NotificationManager::class.java)
-                                notificationManager.notify(NOTIFICATION_ID, createNotification(currentProfileName, currentPublicIp, "Connected"))
-                                Log.i(TAG, "VPN interface established inline. Private IP: $privateIp, MTU: $mtu")
-                                
-                                statsBroadcasterJob = serviceScope?.launch(Dispatchers.Default) {
-                                    Log.d(TAG, "Broadcaster START (v3.15.0)")
-                                    FileLogger.write("Broadcaster START (v3.15.0)")
-                                    var loopCount = 0L
-                                    while (_isRunning.value && coroutineContext.isActive) {
-                                        // Exactly 1 second for smooth UI timer
-                                        delay(1000)
-                                        loopCount++
-                                        
-                                        try {
-                                            val currentTime = System.currentTimeMillis()
-                                            val connectedSeconds = if (connectionStartTime > 0) (currentTime - connectionStartTime) / 1000 else 0L
-                                            
-                                            // Every 60 seconds, log a service heartbeat to FileLogger
-                                            if (loopCount % 60 == 0L) {
-                                                val powerManager = getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
-                                                val isIgnoring = powerManager?.isIgnoringBatteryOptimizations(packageName) ?: false
-                                                val wlHeld = wakeLock?.isHeld ?: false
-                                                FileLogger.write("Service Heartbeat [Up: ${connectedSeconds}s] - WL: $wlHeld, BatteryOptIgnored: $isIgnoring")
-                                                Log.d(TAG, "Broadcaster heartbeat logged (loopCount=$loopCount)")
-                                                
-                                                // REDUNDANT: Update foreground notification to signal activity to OS
-                                                try {
-                                                    val notification = createNotification(currentProfileName, currentPublicIp, "Active (Protecting Connection)")
-                                                    notificationManager.notify(NOTIFICATION_ID, notification)
-                                                } catch (e: Exception) {
-                                                    Log.e(TAG, "Err updating notification", e)
-                                                }
-                                            }
-                                            
-                                            // Safe read of memory-cached value
-                                            val transport = engine.getActiveTransport()
-                                            
-                                            // Stats collection
-                                            val currentRx = TrafficStats.getUidRxBytes(Process.myUid())
-                                            val currentTx = TrafficStats.getUidTxBytes(Process.myUid())
-                                            
-                                            val rx: Long
-                                            val tx: Long
-                                            
-                                            if (currentRx != TrafficStats.UNSUPPORTED.toLong() && currentRx >= baselineRxBytes && baselineRxBytes >= 0) {
-                                                rx = currentRx - baselineRxBytes
-                                                tx = currentTx - baselineTxBytes
-                                            } else {
-                                                rx = engine.rxBytes.get()
-                                                tx = engine.txBytes.get()
-                                            }
-                                            
-                                            VpnConnectionService.rxBytes.set(rx)
-                                            VpnConnectionService.txBytes.set(tx)
-                                            
-                                            val statsIntent = Intent(ACTION_VPN_STATS).setPackage(packageName).apply {
-                                                putExtra(EXTRA_RX_BYTES, rx)
-                                                putExtra(EXTRA_TX_BYTES, tx)
-                                                putExtra(EXTRA_TRANSPORT, transport)
-                                                putExtra(EXTRA_CONNECTION_TIME, connectedSeconds)
-                                                addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
-                                            }
-                                            sendBroadcast(statsIntent)
-                                            
-                                            // Periodic diagnostic logging (every 30s)
-                                            if (loopCount % 30 == 0L) {
-                                                Log.d(TAG, "Stats Alive: Time=${connectedSeconds}s, RX=$rx, TX=$tx, Transport=$transport")
-                                                FileLogger.write("Stats Alive: Time=${connectedSeconds}s, RX=$rx, TX=$tx, Transport=$transport")
-                                            }
-                                        } catch (t: Throwable) {
-                                            // Catch EVERYTHING including JNI linkage errors to keep the thread alive
-                                            if (coroutineContext.isActive) {
-                                                Log.e(TAG, "Broadcaster Error: ${t.message}")
-                                            }
-                                        }
-                                    }
-                                    Log.d(TAG, "Broadcaster Stopped. _isRunning=${_isRunning.value}")
-                                    FileLogger.write("Broadcaster Stopped. _isRunning=${_isRunning.value}")
-                                }
-                                
-                                // Clear the connecting flag since we're now connected
-                                isConnecting.set(false)
-                                
-                                val fd = vpnIf.fd
-                                if (fd != -1) {
-                                    try {
-                                        engine.startTunnel(fd)
-                                    } catch (e: Exception) {
-                                        Log.e(TAG, "Native tunnel error/crash", e)
-                                    } finally {
-                                        engine.cleanup()
-                                    }
-                                } else {
-                                    disconnect()
-                                }
-                            } else {
-                                disconnect()
-                            }
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Error establishing VPN interface", e)
-                            disconnect()
-                        }
-                    }
-
-                    override fun onDataPacket(data: ByteArray) {}
-
-                    override fun onDisconnected() {
-                        Log.d(TAG, "NativeOpenConnect callback: onDisconnected")
-                        FileLogger.write("NativeOpenConnect callback: onDisconnected") // Added for debugging
-                        // Don't call disconnect() here if we're already stopping.
-                        // The return from engine.startTunnel will handle the cleanup.
-                        if (_isRunning.value) {
-                             sendBroadcast(Intent(ACTION_VPN_STATUS).setPackage(packageName).apply {
-                                 putExtra(EXTRA_STATUS, STATUS_DISCONNECTED)
-                             })
-                             // We don't set nativeOpenConnectEngine = null here to avoid racing 
-                             // with the finally block that calls engine.cleanup()
-                             disconnect()
-                        }
-                    }
-                }
-
-                // Call connectSync on IO thread
-                withContext(Dispatchers.IO) {
-                    if (!engine.connectSync(callback)) {
-                        Log.e(TAG, "Native engine connection failed")
-                    }
-                }
             } else {
                 // Legacy Java Engine
                 val engine = com.vpnapp.vpn.openconnect.OpenConnectEngine(
@@ -1463,6 +1254,10 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
         super.onDestroy()
     }
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        runCatching { restoreMissingNotification(notificationSession) }
+        super.onTaskRemoved(rootIntent)
+    }
     override fun onRevoke() { disconnect() }
 
 
@@ -1667,6 +1462,7 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
                 synchronized(routingLock) {
                     if (!serviceDestroyed && !isCancellationRequested.get() && !isDisconnecting.get()) {
                         singBoxEngine = engine
+                        engine.runtimeDns=runtimeDns
                         engine.start(v2rayProfile ?: profile)
                     }
                 }

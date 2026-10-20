@@ -1,4 +1,5 @@
 /.gradle/
+/.gradle-codex/
 /**/build/
 /local.properties
 /app/libs/libbox.aar
@@ -11,4 +12,6 @@
 *.jks
 *.private.*
 key.properties
+/store-assets/privacy-live.html
+/store-assets/release-smoke.png
 .env*

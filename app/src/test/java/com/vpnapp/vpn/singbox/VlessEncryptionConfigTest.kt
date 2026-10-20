@@ -30,4 +30,14 @@ class VlessEncryptionConfigTest {
         assertFalse(vmess.has("encryption"))
         assertEquals("auto", vmess.getString("security"))
     }
+
+    @Test fun publicVlessWithoutTransportOrProtocolEncryptionIsRejected() {
+        val plain = profile.copy(v2rayTls = "none", v2raySecurity = "none")
+        try {
+            SingBoxConfigGenerator.buildOutbounds(plain)
+            fail("An unencrypted VLESS profile must not create a VPN outbound")
+        } catch (expected: IllegalArgumentException) {
+            assertTrue(expected.message.orEmpty().contains("no TLS"))
+        }
+    }
 }

@@ -12,7 +12,7 @@ class XHttpModePolicyTest {
 
     @Test fun everyXHttpModeCanBeForcedAndRestoredWithoutChangingOtherFields() {
         for (network in listOf("xhttp", "splithttp", "XHTTP")) {
-            for (mode in listOf("auto", "packet-up", "stream-one", "stream-up", "none", "")) {
+            for (mode in listOf("auto", "stream-one", "stream-up", "none", "")) {
                 val original = profile.copy(v2rayNetwork = network, v2rayType = mode)
                 val forced = XHttpModePolicy.apply(original, true)
                 assertEquals("stream-up", forced.v2rayType)
@@ -22,6 +22,15 @@ class XHttpModePolicyTest {
                 assertEquals(original, XHttpModePolicy.apply(original, false))
             }
         }
+    }
+
+    @Test fun explicitPacketUpSurvivesGlobalPreferenceButManualChoiceStillWins() {
+        val original = profile.copy(v2rayType = "packet-up")
+        assertEquals(original, XHttpModePolicy.apply(original, true))
+        assertEquals(original, XHttpModePolicy.apply(original, false))
+        assertEquals("packet-up", XHttpModePolicy.apply(original.copy(v2rayType = "stream-up",
+            v2rayOriginalXhttpMode = "packet-up"), true).v2rayType)
+        assertEquals("stream-up", XHttpModePolicy.apply(original.copy(v2rayXhttpModeOverride = "stream-up"), true).v2rayType)
     }
 
     @Test fun extraModeCannotOverrideForcedCoreModeAndOtherExtrasRemainIntact() {

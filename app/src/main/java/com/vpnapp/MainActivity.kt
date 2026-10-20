@@ -14,6 +14,7 @@ import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import com.vpnapp.data.LinkImport
 import com.vpnapp.data.ShareLinkCodec
+import com.vpnapp.data.TunnelEncryptionPolicy
 import com.vpnapp.sharing.QrScannerActivity
 import com.vpnapp.ui.components.LinkShareDialog
 import com.vpnapp.ui.components.LinkSharePayload
@@ -87,6 +88,9 @@ class MainActivity : ComponentActivity() {
                 VpnApp(vpnViewModel)
             }
         }
+        window.decorView.post {
+            if (!isFinishing) com.vpnapp.ads.AdsConsent.refresh(this)
+        }
     }
 }
 
@@ -100,12 +104,17 @@ fun VpnApp(viewModel: VpnViewModel = viewModel()) {
         com.vpnapp.ui.theme.ThemeState.loadTheme(context)
     }
     
+    val localAddresses by viewModel.localAddresses.collectAsState()
+    val alwaysOn by viewModel.alwaysOn.collectAsState()
+    val killSwitch by viewModel.killSwitch.collectAsState()
     val connectionInfo by viewModel.connectionInfo.collectAsState()
     val profiles by viewModel.profiles.collectAsState()
     val selectedProfile by viewModel.selectedProfile.collectAsState()
     val smartPreparing by viewModel.smartPreparing.collectAsState()
     val logs by viewModel.logs.collectAsState()
     val subscriptions by viewModel.subscriptions.collectAsState()
+    val subscriptionImport by viewModel.subscriptionImport.collectAsState()
+    val profileSort by viewModel.profileSort.collectAsState()
     val selectedSubscriptionId by viewModel.selectedSubscriptionId.collectAsState()
     val refreshingSubscriptions by viewModel.refreshingSubscriptions.collectAsState()
     val latencyTestState by viewModel.latencyTestState.collectAsState()
@@ -116,6 +125,13 @@ fun VpnApp(viewModel: VpnViewModel = viewModel()) {
     // State for Add Profile dialog
     var showAddProfileDialog by remember { mutableStateOf(false) }
     var showV2rayOptionsDialog by remember { mutableStateOf(false) }
+    val disclosurePreferences = remember(context) {
+        context.getSharedPreferences("privacy_disclosures", android.content.Context.MODE_PRIVATE)
+    }
+    var vpnDisclosureAccepted by rememberSaveable {
+        mutableStateOf(disclosurePreferences.getBoolean("vpn_traffic_v1", false))
+    }
+    var showVpnDisclosure by rememberSaveable { mutableStateOf(false) }
     var selectedProtocolForNew by remember { mutableStateOf<VpnProtocol?>(null) }
     var importFromClipboard by remember { mutableStateOf(false) }
     
@@ -123,7 +139,7 @@ fun VpnApp(viewModel: VpnViewModel = viewModel()) {
     var sharePayload by remember { mutableStateOf<LinkSharePayload?>(null) }
     var showCameraPermissionHelp by remember { mutableStateOf(false) }
     fun previewImport(text: String) {
-        if (ShareLinkCodec.parseImport(text) != null) pendingImport = text.trim()
+        if (ShareLinkCodec.parseImport(text) != null) pendingImport = com.vpnapp.data.LinkImportInput.normalize(text)
         else Toast.makeText(context, "QR or clipboard does not contain a supported VPN link or subscription URL", Toast.LENGTH_LONG).show()
     }
     val scanLauncher = rememberLauncherForActivityResult(ScanContract()) { result ->
@@ -157,8 +173,11 @@ fun VpnApp(viewModel: VpnViewModel = viewModel()) {
 
     // Function to start VPN service
     fun startVpnService(profile: VpnProfile) {
+        viewModel.refreshLocalAddresses()
         val intent = Intent(context, VpnConnectionService::class.java).apply {
             action = VpnConnectionService.ACTION_CONNECT
+            com.vpnapp.vpn.singbox.TunnelDnsSettings(viewModel.tunnelDnsUrl.value,viewModel.useFakeIp.value).writeTo(this)
+            com.vpnapp.vpn.LanShareSettings.read(context).writeTo(this)
             putExtra(VpnConnectionService.EXTRA_SERVER_IP_INPUT, profile.serverAddress)
             putExtra(VpnConnectionService.EXTRA_SERVER_PORT, profile.port)
             putExtra(VpnConnectionService.EXTRA_PROTOCOL, profile.protocol.name)
@@ -187,6 +206,9 @@ fun VpnApp(viewModel: VpnViewModel = viewModel()) {
             putExtra(VpnConnectionService.EXTRA_V2RAY_FLOW, profile.v2rayFlow)
             putExtra(VpnConnectionService.EXTRA_V2RAY_PBK, profile.v2rayPbk)
             putExtra(VpnConnectionService.EXTRA_V2RAY_SHORT_ID, profile.v2rayShortId)
+            putExtra("v2ray_ech", profile.v2rayEch)
+            putExtra("hysteria_obfs_min", profile.hysteriaObfsMinPacketSize)
+            putExtra("hysteria_obfs_max", profile.hysteriaObfsMaxPacketSize)
             putExtra("hysteria_obfs", profile.hysteriaObfs)
             putExtra("hysteria_obfs_password", profile.hysteriaObfsPassword)
 
@@ -221,6 +243,10 @@ fun VpnApp(viewModel: VpnViewModel = viewModel()) {
     DisposableEffect(Unit) {
         val receiver = object : android.content.BroadcastReceiver() {
             override fun onReceive(context: android.content.Context, intent: Intent) {
+                if (intent.action == VpnConnectionService.ACTION_PROTECTION_STATE) {
+                    viewModel.alwaysOn.value=intent.getBooleanExtra("always_on",false)
+                    viewModel.killSwitch.value=intent.getBooleanExtra("lockdown",false)
+                }
                 if (intent.action == VpnConnectionService.ACTION_VPN_STATUS) {
                     val status = intent.getStringExtra(VpnConnectionService.EXTRA_STATUS)
                     if (status == "CONNECTED") {
@@ -257,6 +283,7 @@ fun VpnApp(viewModel: VpnViewModel = viewModel()) {
             }
         }
         val filter = android.content.IntentFilter().apply {
+            addAction(VpnConnectionService.ACTION_PROTECTION_STATE)
             addAction(VpnConnectionService.ACTION_VPN_STATUS)
             addAction(VpnConnectionService.ACTION_VPN_STATS)
         }
@@ -304,6 +331,15 @@ fun VpnApp(viewModel: VpnViewModel = viewModel()) {
             Toast.makeText(context, "VPN permission denied", Toast.LENGTH_SHORT).show()
         }
     }
+
+    val connectWithSystemPermission: () -> Unit = {
+        val prepareIntent = VpnService.prepare(context)
+        if (prepareIntent != null) {
+            vpnPermissionLauncher.launch(prepareIntent)
+        } else {
+            viewModel.prepareConnection(::startVpnService)
+        }
+    }
     
     // Function to request VPN permission and connect
     val requestVpnPermissionAndConnect: () -> Unit = {
@@ -315,12 +351,14 @@ fun VpnApp(viewModel: VpnViewModel = viewModel()) {
             Toast.makeText(context, "Select a profile first", Toast.LENGTH_SHORT).show()
         } else if (connectionInfo.state == ConnectionState.CONNECTING || connectionInfo.state == ConnectionState.DISCONNECTING) {
             // Ignore taps until the service has completed its transition.
+        } else if (!vpnDisclosureAccepted) {
+            showVpnDisclosure = true
         } else {
-            val prepareIntent = VpnService.prepare(context)
-            if (prepareIntent != null) {
-                vpnPermissionLauncher.launch(prepareIntent)
+            val encryptionIssue = TunnelEncryptionPolicy.blockingReason(profile)
+            if (encryptionIssue != null) {
+                viewModel.rejectInsecureProfile(profile, encryptionIssue)
             } else {
-                viewModel.prepareConnection(::startVpnService)
+                connectWithSystemPermission()
             }
         }
     }
@@ -339,6 +377,7 @@ fun VpnApp(viewModel: VpnViewModel = viewModel()) {
                 adBanner = { com.vpnapp.ads.ConnectionBanner(connectionInfo.state) },
                 smartPreparing = smartPreparing,
                 onCancelSmartConnection = viewModel::cancelSmartConnection,
+                localAddresses = localAddresses,
                 connectionInfo = connectionInfo,
                 profiles = profiles,
                 selectedProfile = selectedProfile,
@@ -348,6 +387,8 @@ fun VpnApp(viewModel: VpnViewModel = viewModel()) {
                 onSelectSubscription = viewModel::selectSubscription,
                 refreshingSubscriptions = refreshingSubscriptions,
                 latencyTestState = latencyTestState,
+                profileSort = profileSort,
+                onProfileSort = viewModel::setProfileSort,
                 onScanQr = ::scanQr,
                 onShareProfile = { profile ->
                     try { sharePayload = LinkSharePayload(profile.name, ShareLinkCodec.export(profile)) }
@@ -365,6 +406,8 @@ fun VpnApp(viewModel: VpnViewModel = viewModel()) {
                     showAddProfileDialog = true
                 },
                 onMeasureLatency = { viewModel.measureAllLatencies() },
+                onStopLatency = viewModel::stopLatencyTests,
+                onUsageHistory = { navController.navigate("usage_history") },
                 onTestCurrentLatency = { viewModel.testCurrentLatency() },
                 onNavigateToLogs = { navController.navigate("logs") },
                 onNavigateToSettings = { navController.navigate("settings") },
@@ -404,6 +447,8 @@ fun VpnApp(viewModel: VpnViewModel = viewModel()) {
             val bufferSize by viewModel.bufferSize.collectAsState()
             val tcpNoDelay by viewModel.tcpNoDelay.collectAsState()
             val mtuSize by viewModel.mtuSize.collectAsState()
+            val tunnelDnsUrl by viewModel.tunnelDnsUrl.collectAsState()
+            val useFakeIp by viewModel.useFakeIp.collectAsState()
             val excludedApps by viewModel.excludedApps.collectAsState()
             val bypassIran by viewModel.bypassIran.collectAsState()
             val bypassPrivateIps by viewModel.bypassPrivateIps.collectAsState()
@@ -414,6 +459,10 @@ fun VpnApp(viewModel: VpnViewModel = viewModel()) {
                 tcpNoDelay = tcpNoDelay,
                 mtuSize = mtuSize,
                 onMtuSizeChange = viewModel::setMtuSize,
+                tunnelDnsUrl = tunnelDnsUrl,
+                useFakeIp = useFakeIp,
+                onTunnelDnsUrlChange = viewModel::setTunnelDnsUrl,
+                onUseFakeIpChange = viewModel::setUseFakeIp,
                 bypassIran = bypassIran,
                 bypassPrivateIps = bypassPrivateIps,
                 forceXhttpStreamUp = forceXhttpStreamUp,
@@ -424,10 +473,22 @@ fun VpnApp(viewModel: VpnViewModel = viewModel()) {
                 onBypassIranChange = { viewModel.setBypassIran(it) },
                 onBypassPrivateIpsChange = { viewModel.setBypassPrivateIps(it) },
                 onNavigateToSplitTunnel = { navController.navigate("split_tunnel") },
+                onManagePrivacyOptions = {
+                    (context as? Activity)?.let(com.vpnapp.ads.AdsConsent::showPrivacyOptions)
+                },
+                onNetworkTools = { navController.navigate("network_tools") },
+                onUsageHistory = { navController.navigate("usage_history") },
                 onNavigateBack = { navController.popBackStack() }
             )
         }
-        
+        composable("network_tools") {
+            com.vpnapp.ui.screens.NetworkToolsScreen(alwaysOn,killSwitch,
+                connectionInfo.state == ConnectionState.CONNECTED) { navController.popBackStack() }
+        }
+        composable("usage_history") {
+            com.vpnapp.ui.screens.UsageHistoryScreen { navController.popBackStack() }
+        }
+
         composable("split_tunnel") {
             val excludedApps by viewModel.excludedApps.collectAsState()
             
@@ -439,6 +500,23 @@ fun VpnApp(viewModel: VpnViewModel = viewModel()) {
         }
     }
     
+    LaunchedEffect(subscriptionImport.imported) {
+        subscriptionImport.imported?.let {
+            Toast.makeText(context, "$it configurations imported", Toast.LENGTH_LONG).show()
+            viewModel.clearSubscriptionImportResult()
+        }
+    }
+    if (subscriptionImport.loading || subscriptionImport.error != null) AlertDialog(
+        onDismissRequest = { if (!subscriptionImport.loading) viewModel.clearSubscriptionImportResult() },
+        title = { Text(if (subscriptionImport.loading) "Importing subscription" else "Import failed") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (subscriptionImport.loading) CircularProgressIndicator()
+            Text(subscriptionImport.error ?: "Downloading and reading VPN configurations…")
+        } },
+        confirmButton = { TextButton(onClick = {
+            if (subscriptionImport.loading) viewModel.cancelSubscriptionImport() else viewModel.clearSubscriptionImportResult()
+        }) { Text(if (subscriptionImport.loading) "Cancel" else "OK") } })
+
     sharePayload?.let { LinkShareDialog(it) { sharePayload = null } }
     pendingImport?.let { text ->
         val parsed = remember(text) { ShareLinkCodec.parseImport(text) }
@@ -484,6 +562,39 @@ fun VpnApp(viewModel: VpnViewModel = viewModel()) {
                 context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}")))
             }) { Text("Open settings") }
         }, dismissButton = { TextButton(onClick = { showCameraPermissionHelp = false }) { Text("Cancel") } })
+
+    if (showVpnDisclosure) AlertDialog(
+        onDismissRequest = { showVpnDisclosure = false },
+        title = { Text("Before you connect") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "SecureVPN requires an encrypted connection from your device to the selected VPN server. Profiles without TLS, REALITY, or protocol encryption cannot connect. Android sends routed traffic through that server, whose operator may process or log it under their own terms. SecureVPN does not operate those servers."
+                )
+                Text(
+                    "IP and latency checks contact external providers, which can receive your public IP and technical request data. Apps you exclude in Split Tunneling use your regular network."
+                )
+                TextButton(onClick = {
+                    runCatching {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://securevpn.rahanetmci.com/privacy/")))
+                    }.onFailure {
+                        Toast.makeText(context, "Could not open the privacy policy", Toast.LENGTH_SHORT).show()
+                    }
+                }) { Text("Read Privacy Policy") }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                disclosurePreferences.edit().putBoolean("vpn_traffic_v1", true).apply()
+                vpnDisclosureAccepted = true
+                showVpnDisclosure = false
+                connectWithSystemPermission()
+            }) { Text("Agree and continue") }
+        },
+        dismissButton = {
+            TextButton(onClick = { showVpnDisclosure = false }) { Text("Cancel") }
+        }
+    )
 
     // Protocol Selection Dialog
     if (showAddProfileDialog) {

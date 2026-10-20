@@ -1,9 +1,35 @@
 {
   "project": "Leadaxe/sing-box-lx",
-  "version": "1.14.2-lx.11",
-  "release": "https://github.com/Leadaxe/sing-box-lx/releases/tag/v1.14.2-lx.11",
-  "asset": "libbox-1.14.2-lx.11.aar",
-  "sha256": "5c8187b9a9693c72d52135c4ced5cce9028a3208edeb8dc1df74089bc3b3b0cc",
-  "verification": "Matched GitHub release asset SHA-256 digest before replacing libbox.aar",
-  "previousVersion": "1.14.0-lx.21"
+  "version": "1.14.2-lx.11-securevpn.16k",
+  "source_tag": "v1.14.2-lx.11",
+  "source_url": "https://github.com/Leadaxe/sing-box-lx/tree/v1.14.2-lx.11",
+  "go": "1.26.8",
+  "ndk": "30.0.16248370",
+  "android_api": 26,
+  "tags": "with_gvisor,with_quic,with_utls,with_xhttp,with_lx_command,with_openconnect,badlinkname,tfogo_checklinkname0",
+  "linker_flags": "-R 16384; -Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384",
+  "submodules": [
+    [
+      "submodules/gvisor",
+      "gvisor-lx",
+      "117243aa02fa2915cb53d1d4549bfca3a3ebf238"
+    ],
+    [
+      "submodules/sing-tun",
+      "sing-tun-lx",
+      "6f56eca9cb2e81d1c233b6104618ff30500e9f39"
+    ],
+    [
+      "submodules/utls",
+      "utls-lx",
+      "59e89bb121d8cc7a0a1c87a930864122b5685d00"
+    ],
+    [
+      "submodules/wireguard-go",
+      "wireguard-go-awg2-lx",
+      "64065e6826ad82aa28429dd829c1c65f29b7f6c9"
+    ]
+  ],
+  "sha256": "b6d7e90f8b00f5f0a682698e1b5cf504fc6ae92a368211370cfe55d401321188",
+  "note": "Rebuilt from source for every ABI with explicit PT_LOAD/RELRO alignment; no ELF header patching. Unused Naive/Tailscale/WireGuard/OpenVPN build tags omitted. Matching libbox symbols retained separately."
 }

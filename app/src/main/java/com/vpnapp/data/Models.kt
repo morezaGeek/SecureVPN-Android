@@ -62,6 +62,7 @@ data class VpnProfile(
     val v2rayHost: String = "",       // WS/HTTP Host
     val v2rayPath: String = "",       // WS/HTTP Path or GRPC Service Name
     val v2rayTls: String = "none",    // none, tls, reality
+    val v2rayEch: String = "",
     val v2raySni: String = "",
     val v2rayAlpn: String = "",
     val v2rayFp: String = "",         // fingerprint: chrome, firefox, etc.
@@ -76,6 +77,8 @@ data class VpnProfile(
     // Hysteria2 Specific Configuration
     val hysteriaObfs: String = "",
     val hysteriaObfsPassword: String = "",
+    val hysteriaObfsMinPacketSize: Int = 512,
+    val hysteriaObfsMaxPacketSize: Int = 1200,
     
     // Latency (TCP ping result in ms, null = not measured)
     val latency: Int? = null,

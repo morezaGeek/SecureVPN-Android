@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.vpnapp.data.VpnProfile
 import com.vpnapp.data.VpnProtocol
+import com.vpnapp.data.TunnelEncryptionPolicy
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.InetAddress
@@ -46,8 +47,11 @@ object SingBoxConfigGenerator {
         }
     }
 
-    fun generate(profile: VpnProfile, context: Context, probe: ProbeEndpoint? = null): String {
+    fun generate(profile: VpnProfile, context: Context, probe: ProbeEndpoint? = null, runtimeDns: TunnelDnsSettings? = null): String {
         val config = JSONObject()
+        val preferences = context.getSharedPreferences("vpn_app_prefs", 0)
+        val dnsUrl = runtimeDns?.url ?: preferences.getString(TunnelDns.URL_KEY, TunnelDns.DEFAULT_URL) ?: TunnelDns.DEFAULT_URL
+        val fakeIp = runtimeDns?.fakeIp ?: preferences.getBoolean(TunnelDns.FAKE_IP_KEY, true)
 
         val isIp = profile.serverAddress.matches(Regex("^\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}$"))
         // PRE-RESOLVE the server address to IP to avoid Go runtime DNS issues
@@ -81,14 +85,8 @@ object SingBoxConfigGenerator {
         // This bypasses ALL local ISP DNS blocking/filtering.
         config.put("dns", JSONObject().apply {
             put("servers", JSONArray().apply {
-                // Real DNS through proxy - standard TCP port 53 through proxy tunnel
-                put(JSONObject().apply {
-                    put("tag", "proxy-dns")
-                    put("type", "tcp")
-                    put("server", "8.8.8.8")
-                    put("server_port", 53)
-                    put("detour", "proxy")
-                })
+                put(TunnelDns.server(TunnelDns.validateUrl(dnsUrl), "proxy-dns", "proxy"))
+                if (profile.v2rayEch.isNotBlank()) put(TunnelDns.echResolver(profile.v2rayEch))
                 // FakeIP server: returns instant fake IPs with ZERO latency (IPv4 only)
                 put(JSONObject().apply {
                     put("tag", "fakeip")
@@ -116,6 +114,11 @@ object SingBoxConfigGenerator {
                 })
             })
             put("rules", JSONArray().apply {
+                // ECH must be bootstrapped before opening the proxy's TLS session.
+                if (profile.v2rayEch.isNotBlank()) put(JSONObject().apply {
+                    put("domain", JSONArray().put(TunnelDns.echQueryName(profile.v2rayEch)))
+                    put("server", "ech-dns")
+                })
                 // Direct DNS for VPN server domain (prevents DNS resolution loop)
                 if (profile.serverAddress.isNotEmpty() && !isIp) {
                     put(JSONObject().apply {
@@ -148,7 +151,7 @@ object SingBoxConfigGenerator {
                         put("A")
                         put("AAAA")
                     })
-                    put("server", "fakeip")
+                    put("server", if (fakeIp) "fakeip" else "proxy-dns")
                 })
             })
             put("strategy", "ipv4_only")
@@ -184,7 +187,20 @@ object SingBoxConfigGenerator {
         })
 
         // Outbounds - use resolvedProfile with pre-resolved IP address
-        config.put("outbounds", buildOutbounds(resolvedProfile))
+        if (profile.protocol == VpnProtocol.OPENCONNECT) {
+            config.put("endpoints", JSONArray().put(JSONObject().apply {
+                put("type", "openconnect"); put("tag", "proxy"); put("system", false)
+                val host = resolvedProfile.serverAddress.let { if (it.contains(":")) "[$it]" else it }
+                put("server", "https://$host:${profile.port}")
+                put("username", profile.username); put("password", profile.password)
+                put("flavor", "anyconnect"); put("no_udp", profile.disableDtls)
+                put("mtu", profile.mtu); put("dpd_interval", "20s"); put("reconnect_timeout", "60s")
+                put("tcp_keep_alive_enabled", true)
+                put("tls", JSONObject().put("insecure", profile.skipCertificateVerification)
+                    .put("server_name", originalDomain.ifEmpty { profile.serverAddress }))
+            }))
+            config.put("outbounds", JSONArray().put(JSONObject().put("type", "direct").put("tag", "direct")))
+        } else config.put("outbounds", buildOutbounds(resolvedProfile))
 
         // Route configuration
         config.put("route", JSONObject().apply {
@@ -193,10 +209,6 @@ object SingBoxConfigGenerator {
             put("default_domain_resolver", "direct-dns")
             put("final", "proxy")
             put("rules", JSONArray().apply {
-                if (probe != null) put(JSONObject().apply {
-                    put("inbound", JSONArray().put("app-probe"))
-                    put("outbound", "proxy")
-                })
                 put(JSONObject().apply {
                     put("action", "sniff")
                     put("sniffer", JSONArray().apply {
@@ -214,26 +226,20 @@ object SingBoxConfigGenerator {
                     put("protocol", "dns")
                     put("action", "hijack-dns")
                 })
-                // Direct route for VPN server address/IP (prevents routing loops)
-                if (profile.serverAddress.isNotEmpty()) {
-                    if (isIp) {
-                        put(JSONObject().apply {
-                            put("ip_cidr", JSONArray().apply { put("${profile.serverAddress}/32") })
-                            put("outbound", "direct")
-                        })
-                    } else {
-                        put(JSONObject().apply {
-                            put("domain", JSONArray().apply { put(profile.serverAddress) })
-                            put("outbound", "direct")
-                        })
-                    }
-                }
-                if (resolvedServerAddress.matches(Regex("^\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}$")) && resolvedServerAddress != profile.serverAddress) {
-                    put(JSONObject().apply {
-                        put("ip_cidr", JSONArray().apply { put("$resolvedServerAddress/32") })
-                        put("outbound", "direct")
-                    })
-                }
+                // Cached FakeIP addresses become domain destinations even after FakeIP is disabled.
+                // Resolve those and domain-based probes locally so the proxy receives the chosen
+                // resolver's IP instead of resolving again at the VPN server.
+                if (!fakeIp) put(JSONObject().apply {
+                    put("action", "resolve")
+                    put("strategy", "ipv4_only")
+                })
+                if (probe != null) put(JSONObject().apply {
+                    put("inbound", JSONArray().put("app-probe"))
+                    put("outbound", "proxy")
+                })
+                // Core sockets are protected by PlatformInterface.autoDetectInterfaceControl.
+                // Client traffic must not bypass just because its destination shares the VPN
+                // server's IP: an anti-sanction DNS relay can use that same address.
                 // Direct route for local DNS servers (prevents routing loops and ensures resolution)
                 put(JSONObject().apply {
                     put("ip_cidr", JSONArray().apply {
@@ -262,6 +268,7 @@ object SingBoxConfigGenerator {
     }
 
     fun buildOutbounds(profile: VpnProfile): JSONArray {
+        TunnelEncryptionPolicy.blockingReason(profile)?.let { throw IllegalArgumentException(it) }
         return JSONArray().apply {
             // Main proxy outbound
             put(buildProxyOutbound(profile))
@@ -290,10 +297,16 @@ object SingBoxConfigGenerator {
                     put("server", profile.serverAddress)
                     put("server_port", profile.port)
                     put("password", profile.password)
-                    if (profile.hysteriaObfs.lowercase() == "salamander") {
+                    if (profile.hysteriaObfs.lowercase() in listOf("salamander", "gecko")) {
                         put("obfs", JSONObject().apply {
-                            put("type", "salamander")
+                            put("type", profile.hysteriaObfs.lowercase())
                             put("password", profile.hysteriaObfsPassword)
+                            if (profile.hysteriaObfs.lowercase() == "gecko") {
+                                require(profile.hysteriaObfsMinPacketSize in 1..profile.hysteriaObfsMaxPacketSize &&
+                                    profile.hysteriaObfsMaxPacketSize <= 65535) { "Invalid Gecko packet size range" }
+                                put("min_packet_size", profile.hysteriaObfsMinPacketSize)
+                                put("max_packet_size", profile.hysteriaObfsMaxPacketSize)
+                            }
                         })
                     }
                     put("tls", JSONObject().apply {
@@ -380,6 +393,8 @@ object SingBoxConfigGenerator {
     private fun buildTls(profile: VpnProfile): JSONObject {
         return JSONObject().apply {
             put("enabled", true)
+            if (profile.v2rayEch.isNotBlank()) put("ech", JSONObject()
+                .put("enabled", true).put("query_server_name", TunnelDns.echQueryName(profile.v2rayEch)))
             val sni = profile.v2raySni.ifEmpty { profile.v2rayHost }.ifEmpty { profile.serverAddress }
             if (sni.isNotEmpty() && !isIpAddress(sni)) {
                 put("server_name", sni)

@@ -3,10 +3,26 @@ package com.vpnapp.data
 import android.net.Uri
 import android.util.Base64
 import org.json.JSONObject
+import java.net.URI
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
+import javax.net.ssl.HttpsURLConnection
 
 object V2RayLinkParser {
+
+    private const val MAX_SUBSCRIPTION_REDIRECTS = 5
+
+    /** Subscription URLs can contain provider credentials, so they must never be sent over cleartext HTTP. */
+    internal fun validateSecureSubscriptionUrl(value: String): java.net.URL {
+        val uri = URI(value.trim())
+        require(uri.scheme.equals("https", ignoreCase = true) && !uri.host.isNullOrBlank()) {
+            "Subscription links must use HTTPS"
+        }
+        return uri.toURL()
+    }
+
+    internal fun resolveSecureSubscriptionRedirect(base: java.net.URL, location: String): java.net.URL =
+        validateSecureSubscriptionUrl(base.toURI().resolve(location.trim()).toString())
 
     /**
      * Parse any supported share link
@@ -55,7 +71,8 @@ object V2RayLinkParser {
             
             // xhttp mode or headerType
             val xhttpMode = if (type == "xhttp" || type == "splithttp") {
-                uri.getQueryParameter("mode") ?: uri.getQueryParameter("xhttpMode") ?: "auto"
+                uri.getQueryParameter("mode") ?: uri.getQueryParameter("xhttpMode") ?:
+                    runCatching { JSONObject(uri.getQueryParameter("extra") ?: "{}").optString("mode", "auto") }.getOrDefault("auto")
             } else {
                 uri.getQueryParameter("headerType") ?: "none"
             }
@@ -71,6 +88,7 @@ object V2RayLinkParser {
                 v2rayXhttpExtra = uri.getQueryParameter("extra") ?: "",
                 v2raySecurity = if (security == "tls") "none" else security,
                 vlessEncryption = uri.getQueryParameter("encryption")?.trim()?.ifEmpty { "none" } ?: "none",
+                v2rayEch = uri.getQueryParameter("ech") ?: "",
                 v2raySni = sni,
                 v2rayAlpn = alpn,
                 v2rayPath = path,
@@ -166,7 +184,8 @@ object V2RayLinkParser {
             }
             val fp = uri.getQueryParameter("fp") ?: "chrome"
             val mode = if (type == "xhttp" || type == "splithttp") {
-                uri.getQueryParameter("mode") ?: uri.getQueryParameter("xhttpMode") ?: "auto"
+                uri.getQueryParameter("mode") ?: uri.getQueryParameter("xhttpMode") ?:
+                    runCatching { JSONObject(uri.getQueryParameter("extra") ?: "{}").optString("mode", "auto") }.getOrDefault("auto")
             } else {
                 "none"
             }
@@ -236,16 +255,15 @@ object V2RayLinkParser {
                 }
             }
 
-            // method:password@host:port
-            // Split last : for port
-            val lastColon = serverInfoString.lastIndexOf(':')
-            val port = serverInfoString.substring(lastColon + 1).toInt()
-            val everythingElse = serverInfoString.substring(0, lastColon)
-            
-            // Split last @ for host
-            val lastAt = everythingElse.lastIndexOf('@')
-            val host = everythingElse.substring(lastAt + 1).removeSurrounding("[", "]")
-            val methodPassword = everythingElse.substring(0, lastAt)
+            // SIP002 permits a trailing slash and query string after the port.
+            // Parse the server authority independently of decoded credentials.
+            val lastAt = serverInfoString.lastIndexOf('@')
+            require(lastAt > 0) { "Shadowsocks link has no server authority" }
+            val serverUri = Uri.parse("http://" + serverInfoString.substring(lastAt + 1))
+            val port = serverUri.port
+            require(port in 1..65535) { "Invalid Shadowsocks port" }
+            val host = serverUri.host?.removeSurrounding("[", "]") ?: return null
+            val methodPassword = serverInfoString.substring(0, lastAt)
             
             // Split : for method and password
             val methodPasswordParts = methodPassword.split(":", limit = 2)
@@ -299,7 +317,9 @@ object V2RayLinkParser {
                 v2rayFp = fp,
                 hysteriaObfs = obfs,
                 hysteriaObfsPassword = obfsPassword,
-                skipCertificateVerification = uri.getQueryParameter("insecure")?.let { it == "1" } ?: true
+                hysteriaObfsMinPacketSize = uri.getQueryParameter("minPacketSize")?.toIntOrNull() ?: 512,
+                hysteriaObfsMaxPacketSize = uri.getQueryParameter("maxPacketSize")?.toIntOrNull() ?: 1200,
+                skipCertificateVerification = uri.getQueryParameter("insecure") == "1" || uri.getQueryParameter("allowInsecure") == "1"
             )
         } catch (e: Exception) {
             e.printStackTrace()
@@ -313,18 +333,39 @@ object V2RayLinkParser {
      * This must be called from a background thread (Dispatchers.IO).
      */
     fun fetchSubscription(subscriptionUrl: String, subscriptionId: String, currentName: String? = null): Pair<VpnSubscription, List<VpnProfile>>? {
+        return runCatching { fetchSubscriptionOrThrow(subscriptionUrl, subscriptionId, currentName) }.getOrNull()
+    }
+
+    fun fetchSubscriptionOrThrow(subscriptionUrl: String, subscriptionId: String, currentName: String? = null): Pair<VpnSubscription, List<VpnProfile>> {
+        var conn: HttpsURLConnection? = null
         try {
-            val url = java.net.URL(subscriptionUrl)
-            val conn = url.openConnection() as java.net.HttpURLConnection
-            conn.requestMethod = "GET"
-            conn.connectTimeout = 15000
-            conn.readTimeout = 15000
-            conn.setRequestProperty("User-Agent", "sing-box") // Tell the server we are a sing-box client so it returns correct config formats
-            
-            val responseCode = conn.responseCode
-            if (responseCode != 200) {
-                return null
+            var url = validateSecureSubscriptionUrl(LinkImportInput.normalize(subscriptionUrl))
+            var redirects = 0
+            while (true) {
+                val candidate = url.openConnection() as? HttpsURLConnection ?: throw SubscriptionImportException("Subscription links must use HTTPS")
+                conn = candidate
+                candidate.instanceFollowRedirects = false
+                candidate.requestMethod = "GET"
+                candidate.connectTimeout = 15000
+                candidate.readTimeout = 15000
+                candidate.setRequestProperty("User-Agent", "sing-box") // Tell the server we are a sing-box client so it returns correct config formats
+
+                val responseCode = candidate.responseCode
+                if (responseCode in setOf(301, 302, 303, 307, 308)) {
+                    val location = candidate.getHeaderField("Location") ?: throw SubscriptionImportException("The subscription server returned an invalid redirect")
+                    if (redirects >= MAX_SUBSCRIPTION_REDIRECTS) throw SubscriptionImportException("The subscription server redirected too many times")
+                    val redirectedUrl = resolveSecureSubscriptionRedirect(url, location)
+                    candidate.disconnect()
+                    conn = null
+                    url = redirectedUrl
+                    redirects++
+                    continue
+                }
+                if (responseCode != HttpsURLConnection.HTTP_OK) throw SubscriptionImportException("Subscription server returned HTTP $responseCode")
+                break
             }
+
+            val response = conn ?: throw SubscriptionImportException("No response from subscription server")
             
             // Read headers for Userinfo (upload, download, total, expire)
             var upload = 0L
@@ -334,10 +375,10 @@ object V2RayLinkParser {
             var name = currentName ?: url.host ?: "Subscription"
             
             // Check headers case-insensitively
-            for (key in conn.headerFields.keys) {
+            for (key in response.headerFields.keys) {
                 if (key == null) continue
                 if (key.equals("subscription-userinfo", ignoreCase = true)) {
-                    val value = conn.getHeaderField(key)
+                    val value = response.getHeaderField(key) ?: continue
                     val parts = value.split(";")
                     for (part in parts) {
                         val kv = part.trim().split("=")
@@ -354,7 +395,7 @@ object V2RayLinkParser {
                     }
                 } else if (key.equals("profile-title", ignoreCase = true)) {
                     if (currentName == null) {
-                        val value = conn.getHeaderField(key)
+                        val value = response.getHeaderField(key) ?: continue
                         if (value.startsWith("base64:")) {
                             try {
                                 name = String(Base64.decode(value.replace("base64:", ""), Base64.DEFAULT), StandardCharsets.UTF_8)
@@ -366,23 +407,23 @@ object V2RayLinkParser {
                 }
             }
             
-            val reader = java.io.BufferedReader(java.io.InputStreamReader(conn.inputStream, StandardCharsets.UTF_8))
-            val contentBuilder = java.lang.StringBuilder()
-            var line: String?
-            while (reader.readLine().also { line = it } != null) {
-                contentBuilder.append(line).append("\n")
+            val content = response.inputStream.use { input ->
+                val buffer = ByteArray(8192)
+                val bytes = java.io.ByteArrayOutputStream()
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read < 0) break
+                    if (bytes.size() + read > 4 * 1024 * 1024) throw SubscriptionImportException("Subscription is too large (maximum 4 MB)")
+                    bytes.write(buffer, 0, read)
+                }
+                bytes.toString(StandardCharsets.UTF_8.name()).trim().removePrefix("\uFEFF")
             }
-            reader.close()
-            conn.disconnect()
-            
-            val content = contentBuilder.toString().trim()
-            val decoded = try {
-                String(Base64.decode(content, Base64.DEFAULT), StandardCharsets.UTF_8)
-            } catch (e: Exception) {
-                // If not base64, maybe it's raw list
-                content
-            }
-            
+            // Raw URI lists must not be accidentally treated as lenient Base64 input.
+            val schemes = listOf("vless://", "vmess://", "trojan://", "ss://", "hysteria2://", "hy2://")
+            val decoded = if (content.lineSequence().any { line -> schemes.any { line.trim().startsWith(it) } }) content
+                else try { String(Base64.decode(content, Base64.DEFAULT), StandardCharsets.UTF_8).trim().removePrefix("\uFEFF") }
+                catch (_: IllegalArgumentException) { content }
+
             val lines = decoded.split("\n")
             val profiles = mutableListOf<VpnProfile>()
             for (l in lines) {
@@ -397,10 +438,14 @@ object V2RayLinkParser {
                 }
             }
             
+            if (profiles.isEmpty()) throw SubscriptionImportException(
+                if (content.startsWith("<")) "The server returned a web page instead of VPN configurations"
+                else "No supported VPN configurations were found in this subscription")
+
             val subscription = VpnSubscription(
                 id = subscriptionId,
                 name = name,
-                url = subscriptionUrl,
+                url = LinkImportInput.normalize(subscriptionUrl),
                 upload = upload,
                 download = download,
                 total = total,
@@ -409,9 +454,20 @@ object V2RayLinkParser {
             )
             
             return Pair(subscription, profiles)
-        } catch (e: Exception) {
-            e.printStackTrace()
-            return null
+        } catch (e: SubscriptionImportException) {
+            throw e
+        } catch (_: java.net.UnknownHostException) {
+            throw SubscriptionImportException("Could not resolve the subscription server. Check your Internet connection and DNS")
+        } catch (_: java.net.SocketTimeoutException) {
+            throw SubscriptionImportException("Subscription download timed out. Check your connection and try again")
+        } catch (_: javax.net.ssl.SSLException) {
+            throw SubscriptionImportException("Could not establish a secure connection to the subscription server")
+        } catch (_: IllegalArgumentException) {
+            throw SubscriptionImportException("Enter a valid HTTPS subscription URL")
+        } catch (_: Exception) {
+            throw SubscriptionImportException("Could not download the subscription. Check your connection and try again")
+        } finally {
+            conn?.disconnect()
         }
     }
 }

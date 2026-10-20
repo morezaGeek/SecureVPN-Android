@@ -176,6 +176,7 @@ class ProfileRepository(context: Context) {
             put("v2rayHost", profile.v2rayHost)
             put("v2rayPath", profile.v2rayPath)
             put("v2rayTls", profile.v2rayTls)
+            put("v2rayEch", profile.v2rayEch)
             put("v2raySni", profile.v2raySni)
             put("v2rayAlpn", profile.v2rayAlpn)
             put("v2rayFp", profile.v2rayFp)
@@ -189,6 +190,8 @@ class ProfileRepository(context: Context) {
             put("subscriptionId", profile.subscriptionId ?: "")
             put("hysteriaObfs", profile.hysteriaObfs)
             put("hysteriaObfsPassword", profile.hysteriaObfsPassword)
+            put("hysteriaObfsMinPacketSize", profile.hysteriaObfsMinPacketSize)
+            put("hysteriaObfsMaxPacketSize", profile.hysteriaObfsMaxPacketSize)
         }
     }
     
@@ -228,6 +231,7 @@ class ProfileRepository(context: Context) {
             v2rayHost = json.optString("v2rayHost", ""),
             v2rayPath = json.optString("v2rayPath", ""),
             v2rayTls = json.optString("v2rayTls", "none"),
+            v2rayEch = json.optString("v2rayEch", ""),
             v2raySni = json.optString("v2raySni", ""),
             v2rayAlpn = json.optString("v2rayAlpn", ""),
             v2rayFp = json.optString("v2rayFp", ""),
@@ -243,6 +247,8 @@ class ProfileRepository(context: Context) {
                 json.getString("v2raySmartXhttpMode") else null,
             hysteriaObfs = json.optString("hysteriaObfs", ""),
             hysteriaObfsPassword = json.optString("hysteriaObfsPassword", ""),
+            hysteriaObfsMinPacketSize = json.optInt("hysteriaObfsMinPacketSize", 512),
+            hysteriaObfsMaxPacketSize = json.optInt("hysteriaObfsMaxPacketSize", 1200),
             subscriptionId = json.optString("subscriptionId", "").ifEmpty { null }
         )
     }

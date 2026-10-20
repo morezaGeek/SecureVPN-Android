@@ -42,11 +42,20 @@ fun SettingsScreen(
     onBypassIranChange: (Boolean) -> Unit,
     onBypassPrivateIpsChange: (Boolean) -> Unit,
     onNavigateToSplitTunnel: () -> Unit,
+    onManagePrivacyOptions: () -> Unit,
     onNavigateBack: () -> Unit,
+    tunnelDnsUrl: String = com.vpnapp.vpn.singbox.TunnelDns.DEFAULT_URL,
+    useFakeIp: Boolean = true,
+    onTunnelDnsUrlChange: (String) -> Unit = {},
+    onUseFakeIpChange: (Boolean) -> Unit = {},
+    onNetworkTools: () -> Unit = {},
+    onUsageHistory: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     var notifications by remember { mutableStateOf(true) }
+    var dnsDraft by remember(tunnelDnsUrl) { mutableStateOf(tunnelDnsUrl) }
+    var dnsError by remember { mutableStateOf<String?>(null) }
     
     CompactSettingsTypography {
     Column(
@@ -87,6 +96,12 @@ fun SettingsScreen(
                 .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            SettingsSection(title = "Network & usage") {
+                SettingsItem(title="Share VPN over LAN & Kill Switch", subtitle="Proxy port, local sharing and Android protection",
+                    icon=Icons.Default.Router, onClick=onNetworkTools)
+                SettingsItem(title="History of Usage", subtitle="Daily, weekly and custom date ranges",
+                    icon=Icons.Default.History, onClick=onUsageHistory)
+            }
             // Connection settings
             SettingsSection(title = "Connection") {
                 // Always-on VPN & Kill Switch - Opens Android VPN Settings
@@ -94,11 +109,7 @@ fun SettingsScreen(
                     title = "Always-on VPN & Kill Switch",
                     subtitle = "Enable in system settings for best protection",
                     icon = Icons.Default.Shield,
-                    onClick = {
-                        // Open Android VPN Settings
-                        val intent = Intent(Settings.ACTION_VPN_SETTINGS)
-                        context.startActivity(intent)
-                    }
+                    onClick = onNetworkTools
                 )
                 
                 Divider(color = CurrentSurfaceVariant)
@@ -142,10 +153,32 @@ fun SettingsScreen(
                 )
             }
             
+            SettingsSection(title = "Tunnel DNS · V2Ray / Hysteria2") {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("DNS inside the VPN is separate from Android Private DNS. Saving applies it to the active tunnel and turns FakeIP off.",
+                        style = MaterialTheme.typography.bodySmall, color = CurrentTextSecondary)
+                    OutlinedTextField(value = dnsDraft, onValueChange = { dnsDraft = it; dnsError = null },
+                        label = { Text("DNS-over-HTTPS URL") }, singleLine = true, isError = dnsError != null,
+                        modifier = Modifier.fillMaxWidth())
+                    dnsError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+                    Button(onClick = {
+                        runCatching { onTunnelDnsUrlChange(com.vpnapp.vpn.singbox.TunnelDns.validateUrl(dnsDraft)) }
+                            .onSuccess { android.widget.Toast.makeText(context, "DNS saved · real DNS answers enabled", android.widget.Toast.LENGTH_SHORT).show() }
+                            .onFailure { dnsError = "Enter a valid HTTPS DNS-over-HTTPS URL" }
+                    }) { Text("Save DNS") }
+                    Text(if (useFakeIp) "FakeIP is enabled: A/AAAA queries use synthetic addresses; the selected DoH resolver is not used for these answers. Save DNS to use it."
+                        else "Using real answers from the saved DoH resolver. Anti-sanction resolvers may redirect some services; if YouTube fails, try https://1.1.1.1/dns-query.",
+                        style = MaterialTheme.typography.bodySmall, color = CurrentTextSecondary)
+                }
+                SettingsToggle(title = "FakeIP", subtitle = if (useFakeIp) "ON · Resolve destinations at the VPN server"
+                    else "OFF · Use real answers from tunnel DNS", icon = Icons.Default.Dns,
+                    checked = useFakeIp, onCheckedChange = onUseFakeIpChange)
+            }
+
             SettingsSection(title = "XHTTP") {
                 SettingsToggle(
                     title = "Force XHTTP stream-up",
-                    subtitle = if (forceXhttpStreamUp) "ON · XHTTP uses stream-up unless a profile has a custom mode"
+                    subtitle = if (forceXhttpStreamUp) "ON · Prefer stream-up; explicit packet-up and custom modes are preserved"
                         else "OFF · Use original modes unless a profile has a custom mode",
                     icon = Icons.Default.Bolt,
                     checked = forceXhttpStreamUp,
@@ -387,6 +420,15 @@ fun SettingsScreen(
                     icon = Icons.Default.Notifications,
                     checked = notifications,
                     onCheckedChange = { notifications = it }
+                )
+            }
+
+            SettingsSection(title = "Privacy") {
+                SettingsItem(
+                    title = "Ad privacy choices",
+                    subtitle = "Review or change Google ad consent",
+                    icon = Icons.Default.PrivacyTip,
+                    onClick = onManagePrivacyOptions
                 )
             }
             

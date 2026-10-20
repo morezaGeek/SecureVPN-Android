@@ -27,6 +27,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import com.vpnapp.data.*
 import com.vpnapp.ui.components.*
 import com.vpnapp.ui.theme.*
@@ -55,6 +57,7 @@ fun HomeScreen(
     onRefreshAllSubscriptions: () -> Unit,
     onDeleteSubscription: (String) -> Unit,
     onUpdateSubscription: (VpnSubscription) -> Unit,
+    localAddresses: String = "",
     selectedSubscriptionId: String? = null,
     onSelectSubscription: (String?) -> Unit = {},
     refreshingSubscriptions: Set<String> = emptySet(),
@@ -62,6 +65,10 @@ fun HomeScreen(
     onShareSubscription: (VpnSubscription) -> Unit = {},
     onScanQr: () -> Unit = {},
     latencyTestState: LatencyTestState = LatencyTestState(),
+    profileSort: ProfileSort = ProfileSort.DEFAULT,
+    onProfileSort: (ProfileSort) -> Unit = {},
+    onStopLatency: () -> Unit = {},
+    onUsageHistory: () -> Unit = {},
     smartPreparing: Boolean = false,
     onCancelSmartConnection: () -> Unit = {},
     adBanner: @Composable () -> Unit = {},
@@ -75,6 +82,7 @@ fun HomeScreen(
     var showEditSubDialog by remember { mutableStateOf<VpnSubscription?>(null) }
     val selectedSubscriptionFilter = selectedSubscriptionId
     var expandedLogs by remember { mutableStateOf(false) }
+    var showSortMenu by remember { mutableStateOf(false) }
     val subscriptionListState = rememberLazyListState()
     LaunchedEffect(selectedSubscriptionId, subscriptions.map { it.id }) {
         val index = subscriptions.indexOfFirst { it.id == selectedSubscriptionId }
@@ -111,6 +119,9 @@ fun HomeScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = onUsageHistory) {
+                        Icon(Icons.Default.History, contentDescription = "History of usage", tint = CurrentTextSecondary)
+                    }
                     IconButton(onClick = onNavigateToLogs) {
                         Icon(
                             imageVector = Icons.Default.Article,
@@ -176,6 +187,7 @@ fun HomeScreen(
                 IpAddressDisplay(
                     publicIp = if (connected) connectionInfo.stats.publicIp else "",
                     originalIp = connectionInfo.stats.originalIp,
+                    localAddresses = localAddresses,
                     countryCode = if (connected) connectionInfo.stats.countryCode else "",
                     mtu = if (connected) connectionInfo.stats.mtu else 0,
                     ping = if (connected) connectionInfo.stats.ping else 0,
@@ -303,9 +315,23 @@ fun HomeScreen(
                     )
                     
                     Row {
+                        Box {
+                            IconButton(onClick = { showSortMenu = true }) {
+                                Icon(Icons.Default.Sort, contentDescription = "Sort profiles", tint = CurrentAccent)
+                            }
+                            DropdownMenu(expanded = showSortMenu, onDismissRequest = { showSortMenu = false }) {
+                                ProfileSort.entries.forEach { sort ->
+                                    DropdownMenuItem(text = { Text(sort.label) },
+                                        onClick = { onProfileSort(sort); showSortMenu = false },
+                                        trailingIcon = { if (sort == profileSort) Icon(Icons.Default.Check, "Selected") })
+                                }
+                            }
+                        }
                         // Ping Button
-                        TextButton(onClick = onMeasureLatency, enabled = !latencyTestState.isRunning &&
-                            connectionState !in listOf(ConnectionState.CONNECTING, ConnectionState.DISCONNECTING)) {
+                        TextButton(
+                            onClick = if (latencyTestState.isRunning) onStopLatency else onMeasureLatency,
+                            modifier = Modifier.semantics { contentDescription = if (latencyTestState.isRunning) "Stop ping tests" else "Start ping tests" },
+                            enabled = latencyTestState.isRunning || connectionState !in listOf(ConnectionState.CONNECTING, ConnectionState.DISCONNECTING)) {
                             if (latencyTestState.isRunning) CircularProgressIndicator(
                                 modifier = Modifier.size(18.dp), color = ConnectedGreen, strokeWidth = 2.dp)
                             else Icon(
@@ -320,6 +346,10 @@ fun HomeScreen(
                                 color = ConnectedGreen,
                                 fontWeight = FontWeight.Medium
                             )
+                            if (latencyTestState.isRunning) {
+                                Spacer(Modifier.width(3.dp))
+                                Icon(Icons.Default.Stop, "Stop", tint = ConnectedGreen, modifier = Modifier.size(16.dp))
+                            }
                         }
                         
                         TextButton(onClick = onAddProfile) {
@@ -337,6 +367,12 @@ fun HomeScreen(
                             )
                         }
                     }
+                }
+
+                if (latencyTestState.isRunning) {
+                    Text("${latencyTestState.activeIds.size} testing in parallel · Tap counter to stop",
+                        style = MaterialTheme.typography.labelSmall, color = CurrentTextSecondary,
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
                 }
                 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -388,12 +424,12 @@ fun HomeScreen(
                         }
                     }
                 } else {
-                    val filteredProfiles = if (selectedSubscriptionFilter == null) profiles else profiles.filter { it.subscriptionId == selectedSubscriptionFilter }
+                    val filteredProfiles = profileSort.apply(if (selectedSubscriptionFilter == null) profiles else profiles.filter { it.subscriptionId == selectedSubscriptionFilter })
                     filteredProfiles.forEach { profile ->
                         ProfileCard(
                             profile = profile,
                             onShare = { onShareProfile(profile) },
-                            isTestingLatency = latencyTestState.activeId == profile.id,
+                            isTestingLatency = profile.id in latencyTestState.activeIds,
                             isLatencyQueued = profile.id in latencyTestState.pendingIds,
                             isSelected = profile.id == selectedProfile?.id,
                             connectionState = connectionInfo.state,
@@ -699,6 +735,7 @@ private fun InlineLogViewer(
 private fun IpAddressDisplay(
     publicIp: String,
     originalIp: String,
+    localAddresses: String = "",
     countryCode: String? = null,
     mtu: Int = 0,
     ping: Long = -1L,
@@ -738,6 +775,11 @@ private fun IpAddressDisplay(
                     style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
                     color = CurrentTextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (connected && mtu > 0) Text("MTU $mtu", style = MaterialTheme.typography.labelSmall, color = CurrentTextSecondary)
+            }
+            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(6.dp)) {
+                Text("Local IP (before VPN):",style=MaterialTheme.typography.labelSmall,color=CurrentTextSecondary)
+                Text(localAddresses.ifEmpty { "No physical IPv4 address" },style=MaterialTheme.typography.labelSmall,
+                    color=CurrentTextPrimary, maxLines=2)
             }
         }
     }

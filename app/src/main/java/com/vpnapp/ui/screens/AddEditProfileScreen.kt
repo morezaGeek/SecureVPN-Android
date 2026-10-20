@@ -73,6 +73,7 @@ fun AddEditProfileScreen(
     var v2rayFp by remember { mutableStateOf(existingProfile?.v2rayFp ?: "") }
     var v2rayFlow by remember { mutableStateOf(existingProfile?.v2rayFlow ?: "") }
     var v2rayPbk by remember { mutableStateOf(existingProfile?.v2rayPbk ?: "") }
+    var v2rayEch by remember { mutableStateOf(existingProfile?.v2rayEch ?: "") }
     var v2rayShortId by remember { mutableStateOf(existingProfile?.v2rayShortId ?: "") }
     var v2rayXhttpExtra by remember { mutableStateOf(existingProfile?.v2rayXhttpExtra ?: "") }
     var v2rayImportText by remember { mutableStateOf("") }
@@ -175,6 +176,7 @@ fun AddEditProfileScreen(
                             v2rayFp = v2rayFp,
                             v2rayFlow = v2rayFlow,
                             v2rayPbk = v2rayPbk,
+                            v2rayEch = v2rayEch,
                             v2rayShortId = v2rayShortId,
                             v2rayXhttpExtra = v2rayXhttpExtra
                         )
@@ -261,6 +263,7 @@ fun AddEditProfileScreen(
                                         v2rayFlow = parsed.v2rayFlow
                                         v2rayPbk = parsed.v2rayPbk
                                         v2rayShortId = parsed.v2rayShortId
+                                        v2rayEch = parsed.v2rayEch
                                         v2rayXhttpExtra = parsed.v2rayXhttpExtra
                                         username = parsed.username
                                         password = parsed.password
@@ -450,6 +453,7 @@ fun AddEditProfileScreen(
                                             v2rayFlow = parsed.v2rayFlow
                                             v2rayPbk = parsed.v2rayPbk
                                             v2rayShortId = parsed.v2rayShortId
+                                        v2rayEch = parsed.v2rayEch
                                         v2rayXhttpExtra = parsed.v2rayXhttpExtra
                                             username = parsed.username
                                             password = parsed.password
@@ -491,6 +495,7 @@ fun AddEditProfileScreen(
                                             v2rayFlow = parsed.v2rayFlow
                                             v2rayPbk = parsed.v2rayPbk
                                             v2rayShortId = parsed.v2rayShortId
+                                        v2rayEch = parsed.v2rayEch
                                         v2rayXhttpExtra = parsed.v2rayXhttpExtra
                                             username = parsed.username
                                             password = parsed.password

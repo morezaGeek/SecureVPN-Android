@@ -47,6 +47,7 @@ object VpnNotificationFactory {
             .setSubText(profileName) // Show profile name in notification subtext
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setOngoing(true)
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .setAutoCancel(false)
             .setOnlyAlertOnce(true)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)

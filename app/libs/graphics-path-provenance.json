@@ -1,0 +1,10 @@
+{
+  "version": "1.1.0-securevpn.16k",
+  "upstream_version": "1.1.0",
+  "source_commit": "1c44f0be720ff16cd30357ad2375239bf97a1da8",
+  "source_url": "https://android.googlesource.com/platform/frameworks/support/+/1c44f0be720ff16cd30357ad2375239bf97a1da8/graphics/graphics-path/src/main/cpp",
+  "ndk": "30.0.16248370",
+  "sha256": "be5b2705725dd116f89d308dffe8c315fcb41ed1f50361a65b40f3b232c7ec64",
+  "flags": "-z max-page-size=16384 -z common-page-size=16384",
+  "source_changes": "None; native source rebuilt with updated NDK/alignment flags."
+}

@@ -11,6 +11,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.Dispatchers
 import kotlin.random.Random
 import android.util.Log 
@@ -30,12 +32,17 @@ import com.vpnapp.vpn.singbox.ProbeEndpoint
 import com.vpnapp.util.ProbeHttp
 
 class VpnViewModel @JvmOverloads constructor(application: Application,
-    private val subscriptionFetcher: (String, String, String?) -> Pair<VpnSubscription, List<VpnProfile>>? = V2RayLinkParser::fetchSubscription,
+    private val subscriptionFetcher: (String, String, String?) -> Pair<VpnSubscription, List<VpnProfile>>? = V2RayLinkParser::fetchSubscriptionOrThrow,
     private val latencyTester: suspend (Application, VpnProfile) -> Int = { app, profile ->
         com.vpnapp.vpn.singbox.SingBoxDelayTester.testProfileDelay(app, profile)
     }
 ) : AndroidViewModel(application) {
     
+    val localAddresses = MutableStateFlow(com.vpnapp.util.LocalNetworkInfo.addresses(application).joinToString(", "))
+    val alwaysOn = MutableStateFlow(false)
+    val killSwitch = MutableStateFlow(false)
+    fun refreshLocalAddresses() { localAddresses.value=com.vpnapp.util.LocalNetworkInfo.addresses(getApplication(), preferredNetwork=originalNetwork).joinToString(", ") }
+
     private val profileRepository = ProfileRepository.getInstance(application)
     
     private val _connectionInfo = MutableStateFlow(VpnConnectionInfo())
@@ -53,6 +60,20 @@ class VpnViewModel @JvmOverloads constructor(application: Application,
     private val subscriptionRefreshJobs = mutableMapOf<String, Job>()
     private val refreshSlots = Semaphore(3)
     private var appInForeground = false
+    private val _subscriptionImport = MutableStateFlow(SubscriptionImportState())
+    val subscriptionImport: StateFlow<SubscriptionImportState> = _subscriptionImport.asStateFlow()
+    private var subscriptionImportJob: Job? = null
+    private var subscriptionImportGeneration = 0L
+    private val _profileSort = MutableStateFlow(ProfileSort.stored(application.getSharedPreferences("vpn_app_prefs", 0)
+        .getString(ProfileSort.PREFERENCE_KEY, null)))
+    val profileSort: StateFlow<ProfileSort> = _profileSort.asStateFlow()
+    fun setProfileSort(sort: ProfileSort) {
+        _profileSort.value = sort
+        getApplication<Application>().getSharedPreferences("vpn_app_prefs", 0).edit().putString(ProfileSort.PREFERENCE_KEY, sort.name).apply()
+    }
+    fun clearSubscriptionImportResult() { if (!_subscriptionImport.value.loading) _subscriptionImport.value = SubscriptionImportState() }
+    fun cancelSubscriptionImport() { subscriptionImportGeneration++; subscriptionImportJob?.cancel(); _subscriptionImport.value = SubscriptionImportState() }
+
     
     private val _selectedProfile = MutableStateFlow<VpnProfile?>(null)
     val selectedProfile: StateFlow<VpnProfile?> = _selectedProfile.asStateFlow()
@@ -236,6 +257,7 @@ class VpnViewModel @JvmOverloads constructor(application: Application,
     }
 
     private fun fetchOriginalIp(force: Boolean = false) {
+        refreshLocalAddresses()
         val network = physicalNetwork()
         if (!force && network == originalNetwork && (originalIpJob?.isActive == true || _connectionInfo.value.stats.originalIp.isNotEmpty())) return
         originalIpJob?.cancel()
@@ -329,6 +351,7 @@ class VpnViewModel @JvmOverloads constructor(application: Application,
                 val context = getApplication<Application>()
                 context.startService(android.content.Intent(context, VpnConnectionService::class.java).apply {
                     action = VpnConnectionService.ACTION_UPDATE_ROUTING
+                    com.vpnapp.vpn.singbox.TunnelDnsSettings(_tunnelDnsUrl.value,_useFakeIp.value).writeTo(this)
                     putExtra("bypass_iran", _bypassIran.value)
                     putExtra("bypass_private_ips", _bypassPrivateIps.value)
                 })
@@ -344,7 +367,17 @@ class VpnViewModel @JvmOverloads constructor(application: Application,
     private fun cancelLatencyTests() {
         latencyTestGeneration++
         latencyBatchJob?.cancel()
+        latencyBatchJob = null
+        pingJob?.cancel()
         _latencyTestState.value = LatencyTestState()
+    }
+
+    /** Keep completed measurements; discard queued work and ignore late results from this generation. */
+    fun stopLatencyTests() {
+        cancelLatencyTests()
+        _connectionInfo.update { info ->
+            if (info.stats.ping == -1L) info.copy(stats = info.stats.copy(ping = 0)) else info
+        }
     }
 
     private fun setProfileLatency(id: String, latency: Int) {
@@ -362,13 +395,16 @@ class VpnViewModel @JvmOverloads constructor(application: Application,
     }
 
     fun measureAllLatencies() {
+        val visible = _profiles.value.filter { _selectedSubscriptionId.value == null || it.subscriptionId == _selectedSubscriptionId.value }
         if (_connectionInfo.value.state == ConnectionState.CONNECTED) {
-            clearLatencies(_profiles.value.map { it.id }.toSet())
-            testCurrentLatency()
+            if (visible.any { it.id == _connectionInfo.value.profile?.id }) {
+                clearLatencies(setOfNotNull(_connectionInfo.value.profile?.id))
+                testCurrentLatency()
+            }
             return
         }
         if (_connectionInfo.value.state in listOf(ConnectionState.CONNECTING, ConnectionState.DISCONNECTING)) return
-        startLatencyBatch(_profiles.value)
+        startLatencyBatch(visible)
     }
 
     private fun startLatencyBatch(profiles: List<VpnProfile>) {
@@ -380,29 +416,33 @@ class VpnViewModel @JvmOverloads constructor(application: Application,
         _latencyTestState.value = LatencyTestState(pendingIds = ids, total = ids.size)
         latencyBatchJob = viewModelScope.launch {
             try {
-                for (profile in snapshot) {
-                    coroutineContext.ensureActive()
-                    if (_connectionInfo.value.state !in listOf(ConnectionState.DISCONNECTED, ConnectionState.ERROR)) break
-                    if (_profiles.value.none { it.id == profile.id }) {
-                        _latencyTestState.update { it.copy(pendingIds = it.pendingIds - profile.id) }
-                        continue
-                    }
-                    _latencyTestState.update { it.copy(activeId = profile.id) }
-                    val result = try {
-                        withContext(Dispatchers.IO) { latencyTester(getApplication(), profile) }
-                    } catch (e: kotlinx.coroutines.CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        Log.e("VpnViewModel", "Latency test failed for ${profile.name}", e)
-                        -1
-                    }
-                    coroutineContext.ensureActive()
-                    if (generation != latencyTestGeneration) return@launch
-                    // Ignore results for profiles edited or replaced by a subscription refresh.
-                    if (_profiles.value.any { it.id == profile.id && it.copy(latency = null) == profile }) {
-                        setProfileLatency(profile.id, result)
-                    }
-                    _latencyTestState.update { it.copy(pendingIds = it.pendingIds - profile.id, activeId = null) }
+                val slots = Semaphore(LatencyTestState.MAX_CONCURRENT_PROBES)
+                coroutineScope {
+                    snapshot.map { profile -> launch {
+                        slots.withPermit {
+                            coroutineContext.ensureActive()
+                            if (generation != latencyTestGeneration || _connectionInfo.value.state !in listOf(ConnectionState.DISCONNECTED, ConnectionState.ERROR)) return@withPermit
+                            if (_profiles.value.none { it.id == profile.id }) {
+                                _latencyTestState.update { it.copy(pendingIds = it.pendingIds - profile.id) }
+                                return@withPermit
+                            }
+                            _latencyTestState.update { it.copy(activeIds = it.activeIds + profile.id) }
+                            try {
+                                val result = try { withContext(Dispatchers.IO) { latencyTester(getApplication(), profile) } }
+                                catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                                catch (_: Exception) { -1 }
+                                coroutineContext.ensureActive()
+                                if (generation != latencyTestGeneration) return@withPermit
+                                if (_profiles.value.any { it.id == profile.id && it.copy(latency = null) == profile }) {
+                                    setProfileLatency(profile.id, result)
+                                }
+                            } finally {
+                                if (generation == latencyTestGeneration) _latencyTestState.update {
+                                    it.copy(pendingIds = it.pendingIds - profile.id, activeIds = it.activeIds - profile.id)
+                                }
+                            }
+                        }
+                    } }.joinAll()
                 }
             } finally {
                 if (generation == latencyTestGeneration) _latencyTestState.value = LatencyTestState()
@@ -474,6 +514,10 @@ class VpnViewModel @JvmOverloads constructor(application: Application,
     fun prepareConnection(onReady: (VpnProfile) -> Unit) {
         if (_connectionInfo.value.state !in listOf(ConnectionState.DISCONNECTED, ConnectionState.ERROR)) return
         val profile = _selectedProfile.value ?: return
+        TunnelEncryptionPolicy.blockingReason(profile)?.let { reason ->
+            rejectInsecureProfile(profile, reason)
+            return
+        }
         connect()
         if (!XHttpModePolicy.isXHttp(profile) || profile.v2rayXhttpModeOverride != "smart") {
             onReady(profile)
@@ -529,6 +573,12 @@ class VpnViewModel @JvmOverloads constructor(application: Application,
         }
     }
 
+    fun rejectInsecureProfile(profile: VpnProfile, reason: String) {
+        if (_connectionInfo.value.state !in listOf(ConnectionState.DISCONNECTED, ConnectionState.ERROR)) return
+        _connectionInfo.update { it.copy(state = ConnectionState.ERROR, profile = profile, errorMessage = reason) }
+        addLog(profile.id, profile.name, LogLevel.ERROR, reason)
+    }
+
     fun cancelSmartConnection() {
         if (!_smartPreparing.value) return
         smartRequestGeneration++
@@ -547,6 +597,7 @@ class VpnViewModel @JvmOverloads constructor(application: Application,
     }
     
     private fun connect() {
+        refreshLocalAddresses()
         cancelLatencyTests()
         val profile = _selectedProfile.value ?: return
         
@@ -727,6 +778,32 @@ class VpnViewModel @JvmOverloads constructor(application: Application,
         .getInt("mtu_size", 1400).takeIf { it in 1200..1500 } ?: 1400)
     val mtuSize: StateFlow<Int> = _mtuSize
     
+    private val _tunnelDnsUrl = MutableStateFlow(application.getSharedPreferences("vpn_app_prefs", 0)
+        .getString(com.vpnapp.vpn.singbox.TunnelDns.URL_KEY, com.vpnapp.vpn.singbox.TunnelDns.DEFAULT_URL)
+        ?: com.vpnapp.vpn.singbox.TunnelDns.DEFAULT_URL)
+    val tunnelDnsUrl: StateFlow<String> = _tunnelDnsUrl
+    private val _useFakeIp = MutableStateFlow(application.getSharedPreferences("vpn_app_prefs", 0)
+        .getBoolean(com.vpnapp.vpn.singbox.TunnelDns.FAKE_IP_KEY, true))
+    val useFakeIp: StateFlow<Boolean> = _useFakeIp
+
+    fun setTunnelDnsUrl(url: String) {
+        val validated = com.vpnapp.vpn.singbox.TunnelDns.validateUrl(url)
+        _tunnelDnsUrl.value = validated
+        // Saving a resolver means using its answers, not leaving A/AAAA queries on FakeIP.
+        _useFakeIp.value = false
+        getApplication<Application>().getSharedPreferences("vpn_app_prefs", 0).edit()
+            .putString(com.vpnapp.vpn.singbox.TunnelDns.URL_KEY, validated)
+            .putBoolean(com.vpnapp.vpn.singbox.TunnelDns.FAKE_IP_KEY, false).apply()
+        applyRoutingSettings()
+    }
+
+    fun setUseFakeIp(enabled: Boolean) {
+        _useFakeIp.value = enabled
+        getApplication<Application>().getSharedPreferences("vpn_app_prefs", 0).edit()
+            .putBoolean(com.vpnapp.vpn.singbox.TunnelDns.FAKE_IP_KEY, enabled).apply()
+        applyRoutingSettings()
+    }
+
     fun setBufferSize(size: Int) {
         require(size in 65536..8388608)
         _bufferSize.value = size
@@ -870,7 +947,7 @@ class VpnViewModel @JvmOverloads constructor(application: Application,
         latencyBatchJob?.cancel()
         clearLatencies(setOf(profileId))
         _connectionInfo.update { it.copy(stats = it.stats.copy(ping = -1)) }
-        _latencyTestState.value = LatencyTestState(setOf(profileId), profileId, 1)
+        _latencyTestState.value = LatencyTestState(setOf(profileId), setOf(profileId), 1)
         pingJob = viewModelScope.launch(Dispatchers.IO) {
             try {
             val transport = awaitProbeTransport()
@@ -994,30 +1071,36 @@ class VpnViewModel @JvmOverloads constructor(application: Application,
 
     // Subscription Management
     fun addSubscription(url: String, name: String? = null) {
-        viewModelScope.launch(Dispatchers.IO) {
-            val subscriptionId = java.util.UUID.randomUUID().toString()
-            val result = V2RayLinkParser.fetchSubscription(url, subscriptionId, name)
-            if (result != null) {
-                val (subscription, profiles) = result
-                // Save subscription
+        if (_subscriptionImport.value.loading) return
+        val generation = ++subscriptionImportGeneration
+        _subscriptionImport.value = SubscriptionImportState(loading = true)
+        subscriptionImportJob = viewModelScope.launch {
+            try {
+                val subscriptionId = java.util.UUID.randomUUID().toString()
+                val result = withContext(Dispatchers.IO) {
+                    subscriptionFetcher(LinkImportInput.normalize(url), subscriptionId, name)
+                } ?: throw SubscriptionImportException("Could not download the subscription. Check your connection and try again")
+                coroutineContext.ensureActive()
+                val (subscription, incoming) = result
+                if (incoming.isEmpty()) throw SubscriptionImportException("No supported VPN configurations were found in this subscription")
+                val profiles = incoming.map { XHttpModePolicy.apply(it.copy(subscriptionId = subscription.id), _forceXhttpStreamUp.value) }
                 _subscriptions.update { it + subscription }
                 profileRepository.saveSubscriptions(_subscriptions.value)
-                
-                // Add profiles
-                _profiles.update { current ->
-                    current + profiles.map { XHttpModePolicy.apply(it, _forceXhttpStreamUp.value) }
-                }
+                _profiles.update { it + profiles }
                 profileRepository.saveProfiles(_profiles.value)
-                
-                // If selected profile is null, select the first profile of this subscription
-                if (_selectedProfile.value == null && profiles.isNotEmpty()) {
-                    selectProfile(profiles.first())
-                }
-                
-                addLog(subscription.id, subscription.name, LogLevel.SUCCESS, "Subscription '${subscription.name}' added with ${profiles.size} profiles")
-                measureAllLatencies()
-            } else {
-                addLog("subscription_error", "System", LogLevel.ERROR, "Failed to download subscription from $url")
+                if (_selectedProfile.value == null) selectProfile(profiles.first())
+                selectSubscription(subscription.id)
+                _subscriptionImport.value = SubscriptionImportState(imported = profiles.size)
+                addLog(subscription.id, subscription.name, LogLevel.SUCCESS, "Subscription added with ${profiles.size} profiles")
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (generation != subscriptionImportGeneration) return@launch
+                val message = (e as? SubscriptionImportException)?.message ?: "Could not import subscription. Check your connection and try again"
+                _subscriptionImport.value = SubscriptionImportState(error = message)
+                addLog("subscription_error", "System", LogLevel.ERROR, message)
+            } finally {
+                if (generation == subscriptionImportGeneration && _subscriptionImport.value.loading) _subscriptionImport.value = SubscriptionImportState()
             }
         }
     }
@@ -1045,6 +1128,7 @@ class VpnViewModel @JvmOverloads constructor(application: Application,
 
     fun selectSubscription(id: String?) {
         val valid = id?.takeIf { selected -> _subscriptions.value.any { it.id == selected } }
+        if (_selectedSubscriptionId.value != valid) cancelLatencyTests()
         _selectedSubscriptionId.value = valid
         profileRepository.setSelectedSubscriptionId(valid)
     }
@@ -1099,6 +1183,11 @@ class VpnViewModel @JvmOverloads constructor(application: Application,
             } else {
                 addLog(sub.id, sub.name, LogLevel.ERROR, "Could not refresh subscription; saved profiles kept")
             }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                addLog(subscriptionId, "Subscription", LogLevel.ERROR,
+                    (e as? SubscriptionImportException)?.message ?: "Could not refresh subscription; saved profiles kept")
             } finally {
                 _refreshingSubscriptions.update { it - subscriptionId }
                 subscriptionRefreshJobs.remove(subscriptionId)

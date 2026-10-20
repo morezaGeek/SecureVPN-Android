@@ -12,7 +12,7 @@ sealed interface LinkImport {
 /** Share connection parameters, never local IDs, timestamps or session statistics. */
 object ShareLinkCodec {
     fun parseImport(text: String): LinkImport? {
-        val value = text.trim()
+        val value = LinkImportInput.normalize(text)
         if (value.isEmpty() || value.length > 32_768 || value.any { it.isWhitespace() }) return null
         val uri = Uri.parse(value)
         if (uri.scheme in listOf("https", "http")) {
@@ -59,7 +59,7 @@ object ShareLinkCodec {
         val mode = if (profile.v2rayXhttpModeOverride == "smart")
             profile.v2raySmartXhttpMode ?: profile.v2rayType else profile.v2rayType
         val transport = linkedMapOf("type" to profile.v2rayNetwork, "security" to tls,
-            "sni" to profile.v2raySni, "alpn" to profile.v2rayAlpn, "fp" to profile.v2rayFp,
+            "ech" to profile.v2rayEch, "sni" to profile.v2raySni, "alpn" to profile.v2rayAlpn, "fp" to profile.v2rayFp,
             "host" to profile.v2rayHost, "path" to profile.v2rayPath,
             "serviceName" to profile.v2rayPath.takeIf { profile.v2rayNetwork == "grpc" }.orEmpty(),
             "flow" to profile.v2rayFlow, "pbk" to profile.v2rayPbk, "sid" to profile.v2rayShortId,
@@ -89,6 +89,8 @@ object ShareLinkCodec {
             VpnProtocol.HYSTERIA2 -> link("hysteria2", Uri.encode(profile.password), mapOf(
                 "sni" to profile.v2raySni, "alpn" to profile.v2rayAlpn, "fp" to profile.v2rayFp,
                 "obfs" to profile.hysteriaObfs, "obfs-password" to profile.hysteriaObfsPassword,
+                "minPacketSize" to if (profile.hysteriaObfs == "gecko") profile.hysteriaObfsMinPacketSize.toString() else "",
+                "maxPacketSize" to if (profile.hysteriaObfs == "gecko") profile.hysteriaObfsMaxPacketSize.toString() else "",
                 "insecure" to if (profile.skipCertificateVerification) "1" else "0"))
             VpnProtocol.OPENCONNECT, VpnProtocol.SSTP -> link(profile.protocol.name.lowercase(),
                 "${Uri.encode(profile.username)}:${Uri.encode(profile.password)}", mapOf(

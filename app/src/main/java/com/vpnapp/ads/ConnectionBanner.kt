@@ -23,8 +23,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlin.coroutines.resume
 
 // Google demo identifiers only. Production requires AdMob IDs and the consent flow.
-object TestAds {
-    const val BANNER_ID = "ca-app-pub-3940256099942544/6300978111"
+private object AdsSdk {
     private val initialization = Mutex()
     @Volatile private var initialized = false
     suspend fun initialize(context: android.content.Context) = initialization.withLock {
@@ -39,7 +38,7 @@ object TestAds {
 
 /** Called only by the Home destination. Removing it pauses/destroys the ad, never the VPN. */
 @Composable
-fun ConnectionBanner(connectionState: ConnectionState) {
+fun ConnectionBanner(connectionState: ConnectionState, allowAds: Boolean = AdsConsent.canRequestAds) {
     val owner = LocalLifecycleOwner.current
     var resumed by remember(owner) { mutableStateOf(owner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
     DisposableEffect(owner) {
@@ -47,11 +46,11 @@ fun ConnectionBanner(connectionState: ConnectionState) {
         owner.lifecycle.addObserver(observer)
         onDispose { owner.lifecycle.removeObserver(observer) }
     }
-    if (resumed && connectionState == ConnectionState.DISCONNECTED) TestConnectionBanner()
+    if (allowAds && resumed && connectionState == ConnectionState.DISCONNECTED) ConnectionAdBanner()
 }
 
 @Composable
-private fun TestConnectionBanner() {
+private fun ConnectionAdBanner() {
     val context = LocalContext.current
     val store = remember(context) { AdCycleStore(context.applicationContext) }
     var loaded by remember { mutableStateOf(false) }
@@ -74,7 +73,7 @@ private fun TestConnectionBanner() {
     LaunchedEffect(Unit) {
         try {
             while (!withContext(Dispatchers.IO) { store.reserve(System.currentTimeMillis()) }) delay(1000)
-            val adView = AdView(context).apply { adUnitId = TestAds.BANNER_ID; setAdSize(AdSize.BANNER) }
+            val adView = AdView(context).apply { adUnitId = com.vpnapp.BuildConfig.ADMOB_BANNER_ID; setAdSize(AdSize.BANNER) }
             view = adView
             adView.adListener = object : AdListener() {
                 override fun onAdLoaded() { if (!disposed && !finished) loaded = true }
@@ -87,7 +86,7 @@ private fun TestConnectionBanner() {
                 }
             }
             withContext(Dispatchers.IO) {
-                TestAds.initialize(context.applicationContext)
+                AdsSdk.initialize(context.applicationContext)
             }
             withContext(Dispatchers.Main.immediate) {
                 if (!disposed) adView.loadAd(AdRequest.Builder().build())

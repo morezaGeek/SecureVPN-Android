@@ -1,3 +1,27 @@
+## بررسی عدم نمایش تبلیغ نسخهٔ Play — 2026-10-08
+
+این بخش بر وضعیت‌های تاریخی پایین مقدم است. کاربر نسخهٔ Play را نصب کرده و پس از دو اتصال موفق و قطع کامل نیز بنری ندیده است. علت نهایی روی گوشی با logcat تأیید نشده؛ هنگام بررسی دستگاه ADB متصل نبود.
+
+- فایل واقعی `SecureVPN-Play-1.0.0/SecureVPN-1.0.0-play.aab` در ریشهٔ workspace بررسی شد: manifest دارای App ID واقعی `ca-app-pub-5284715425712192~7524274903` و DEX دارای Banner ID واقعی `ca-app-pub-5284715425712192/9988540732` است. مشکل demo ID در این artifact مشاهده نشد. این repository سورس Play است.
+- تلاش نخست برای داشبورد 403 داشت؛ تلاش دوباره در Chrome متصل موفق شد. AdMob Home صریحاً `Your account isn't approved yet` و `Your account is being verified` نشان داد؛ payment profile کامل است. زمان اعلام‌شدهٔ خود داشبورد معمولاً 24 ساعت و در موارد نادر تا دو هفته است.
+- SecureVPN در Apps وضعیت `Requires review` و `Limited ad serving / Add store to lift limit` دارد؛ هیچ Store یا package name هنوز لینک نشده است. جست‌وجوی دقیق `com.rahanetmci.securevpn` در Add store نتیجه‌ای نداد. وجود نسخهٔ قابل نصب برای اعضای Closed testing به معنی قابل پیدا کردن بودن صفحهٔ عمومی در AdMob نیست؛ نام یا فروشگاه دیگری جایگزین نشد.
+- پیام European regulations وجود نداشت. پیش‌نویس `SecureVPN ad privacy consent` برای SecureVPN ساخته و ذخیره شد: English، لینک `https://securevpn.rahanetmci.com/privacy/` و گزینه‌های Consent، Do not consent و Manage options؛ رد رضایت برای تمام مناطق پیام فعال است. انتشار نهایی توسط بررسی خودکار به‌دلیل نبود تأیید صریح همین تنظیم متوقف شد؛ کاربر سپس خودش Publish را زد و محدودهٔ جهانی خواست. پیام منتشرشده دوباره باز شد و وضعیت `Published` و Geography=`Everywhere` تأیید شد. تنظیمات account-wide ad partners تغییر نکردند.
+- تغییر تنظیم پیام روی سرور AdMob است و برای این تغییر AAB/APK جدید ساخته نشد. دیالوگ AdMob می‌گوید رسیدن پیام به اپ ممکن است تا یک ساعت طول بکشد؛ پس از آن اپ باید دوباره باز شود تا UMP refresh اجرا شود. Everywhere محدودهٔ پیام رضایت را تعیین می‌کند؛ تأیید حساب، review اپ یا موجود بودن تبلیغ در تمام کشورها را تضمین نمی‌کند.
+- در کد Play، `AdsConsent.canRequestAds` تا پاسخ مجاز UMP false است؛ شکست refresh روی نصب اول می‌تواند درخواست بنر را متوقف کند. شمارش دو چرخه، فقط Home/RESUMED/DISCONNECTED، فاصلهٔ تلاش 120 ثانیه، مهلت بارگذاری 15 ثانیه و یک تلاش در هر حضور Home بررسی شدند. تست قبلی بنر success یا failure کنترل‌شده را می‌پذیرد و اثبات نمایش creative واقعی نیست. بدون لاگ دستگاه، timeout، خطای UMP، no-fill یا شمارش چرخه‌ها را علت قطعی اعلام نمی‌کنیم. در این بررسی کد اپ تغییر نکرد و تبلیغ واقعی کلیک نشد.
+
+شواهد در workspace: `scratch/ads-audit/admob-app-status.jpg`، `store-search-not-found.jpg`، `consent-published.jpg` و `consent-worldwide-targeting.jpg`.
+
+مراحل باقی‌مانده: تکمیل تأیید حساب توسط گوگل؛ اتصال صفحهٔ واقعی Store پس از قابل پیدا شدن و تکمیل app readiness/app-ads.txt؛ سپس بررسی لاگ UMP و LoadAdError روی دستگاه در صورت ادامهٔ مشکل.
+
+منابع رسمی: [App readiness](https://support.google.com/admob/answer/10564477?hl=en)، [Store linking](https://support.google.com/admob/answer/10037806?hl=en)، [UMP Android](https://developers.google.com/admob/android/privacy).
+
+## وضعیت بیلد هنگام آماده‌سازی Play — سابقهٔ 2026-10-08
+
+این بخش وضعیت قطعی جاری است؛ توضیحات نسخهٔ demo 1.0.1/code200 در پایین سابقهٔ sideload هستند. نسخهٔ Play اکنون 1.0.0/code1 است و build با Mobile Ads 25.5.0، UMP 4.0.0، Kotlin/Compose plugin 2.3.21، AGP 8.13.2 و Gradle 8.13 موفق شده است. release از شناسه‌های واقعی ثبت‌شدهٔ AdMob استفاده می‌کند و debug از demo. درخواست تبلیغ با UMP و canRequestAds کنترل می‌شود و مسیر privacy choices در کد وجود دارد؛ پیام consent حساب AdMob هنوز باید ایجاد و منتشر شود.
+
+46 تست JVM و چهار تست Android پاس شدند. تست بنر، بارگذاری یا شکست کنترل‌شده بدون جلوگیری از اتصال را بررسی می‌کند؛ نمایش قطعی creative یا درآمد تبلیغ تأیید نشده و هیچ تبلیغ واقعی کلیک نشده است. app readiness، اتصال به Store و تأیید app-ads.txt هنوز باقی‌اند. AAB امضاشده ساخته و اعتبارسنجی شده ولی در Play بارگذاری نشده است. Data safety به‌صورت پیش‌نویس ذخیره شده؛ انتشار عمومی انجام نشده است. وضعیت کامل و موانع native 16KB در ANDROID_PLAY_PREPARATION.md ثبت است.
+
+## سوابق تاریخی — وضعیت‌های قدیمی زیر ممکن است منسوخ باشند
 # تبلیغ آزمایشی اندروید — 1.0.1 / code200
 
 2026-10-08. پیاده‌سازی بنر کوچک طبق تأیید کاربر؛ این APK با شناسه‌های رسمی Google demo کار می‌کند و تبلیغ درآمدزا نیست.
@@ -29,7 +53,7 @@
 
 نسخهٔ25.5.0 در toolchain فعلی Kotlin1.9 به‌دلیل metadata2.3 کامپایل نشد. بررسی AAR رسمی24.0 نیز metadata2.1 نشان داد. APK آزمایشی با23.6.0 سازگار ساخته می‌شود؛ سری23 deprecated است و طبق جدول فعلی Google تا30ژوئن2027 sunset نمی‌شود. **پیش از انتشار واقعی Play، ابزار Kotlin/Compose/AGP و SDK تبلیغات باید به نسخهٔ پشتیبانی‌شده ارتقا یابند**؛ خطای metadata با skip flag دور زده نشده است.
 
-برای فعال‌کردن تبلیغات واقعی: readiness/store linking، consent با UMP و گزینهٔ مدیریت حریم خصوصی در مناطق لازم، app-ads.txt/سایت توسعه‌دهنده و اصلاح Data safety/privacy policy انجام شوند. صرف تعویض دو ID برای انتشار کافی نیست. موانع اولیهٔ Play (امضا/API36/native16KB) نیز در ANDROID_PLAY_PREPARATION.md باقی‌اند. درخواست بنر از مسیر معمول اینترنت انجام می‌شود؛ routing کاربران/اپ‌های دیگر برای درآمد تبلیغات تغییر نکرده است.
+برای فعال‌کردن تبلیغات واقعی: readiness/store linking، consent با UMP و گزینهٔ مدیریت حریم خصوصی در مناطق لازم، app-ads.txt/سایت توسعه‌دهنده و اصلاح Data safety/privacy policy انجام شوند. صرف تعویض دو ID برای انتشار کافی نیست. موانع فعلی Play شامل امضا/AAB و build تأییدشده با API36 است؛ سازگاری nativeهای 16KB هم باید پیش از مهلت 1فوریه2027 آماده شود. درخواست بنر از مسیر معمول اینترنت انجام می‌شود؛ routing کاربران/اپ‌های دیگر برای درآمد تبلیغات تغییر نکرده است.
 
 ## سایت توسعه‌دهنده — 2026-10-08
 

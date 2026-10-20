@@ -9,6 +9,7 @@ import android.os.ParcelFileDescriptor
 import android.util.Log
 import com.vpnapp.data.VpnProfile
 import com.vpnapp.util.FileLogger
+import io.nekohasekai.libbox.*
 import io.nekohasekai.libbox.BridgeOptions
 import io.nekohasekai.libbox.BridgeSession
 import io.nekohasekai.libbox.CommandServer
@@ -82,6 +83,7 @@ class SingBoxEngine(
      */
     @Synchronized
     fun start(profile: VpnProfile) {
+        protectOpenConnectSockets = profile.protocol == com.vpnapp.data.VpnProtocol.OPENCONNECT
         if (isRunning.getAndSet(true)) {
             callback.onError("Already running")
             return
@@ -93,7 +95,8 @@ class SingBoxEngine(
             // Generate configuration
             val probe = ProbeEndpoint.create()
             probeEndpoint = probe
-            val config = SingBoxConfigGenerator.generate(profile, context, probe)
+            val config = SingBoxConfigGenerator.generate(profile, context, probe, runtimeDns)
+            logDnsMode()
             
             // Save to file for debugging purposes
             val configFile = File(context.cacheDir, "sing-box-config.json")
@@ -126,6 +129,7 @@ class SingBoxEngine(
             val overrideOptions = OverrideOptions()
             commandServer?.startOrReloadService(config, overrideOptions)
             ProbeEndpoint.active = probe
+            startTrafficClient()
             
             callback.onLog("Starting sing-box service...")
             callback.onStarted()
@@ -145,11 +149,24 @@ class SingBoxEngine(
     @Synchronized
     fun reloadRouting(profile: VpnProfile) {
         check(isRunning.get()) { "Sing-box is not running" }
-        val config = SingBoxConfigGenerator.generate(profile, context, probeEndpoint)
+        val config = SingBoxConfigGenerator.generate(profile, context, probeEndpoint, runtimeDns)
         val server = checkNotNull(commandServer) { "Sing-box command server is unavailable" }
+        synchronized(trafficLock) { trafficGeneration++ }
+        trafficClient?.disconnect();trafficClient=null
         server.startOrReloadService(config, OverrideOptions())
+        synchronized(trafficLock) { nativeRx=0;nativeTx=0 }
+        startTrafficClient()
         File(context.cacheDir, "sing-box-config.json").writeText(config)
         callback.onLog("Routing applied: Iran=${profile.bypassIranRoutes}, LAN=${profile.bypassPrivateIps}")
+        logDnsMode()
+    }
+
+    private fun logDnsMode() {
+        val prefs = context.getSharedPreferences("vpn_app_prefs", 0)
+        val fakeIp = runtimeDns?.fakeIp ?: prefs.getBoolean(TunnelDns.FAKE_IP_KEY, true)
+        val dnsHost = java.net.URI(runtimeDns?.url ?: prefs.getString(TunnelDns.URL_KEY, TunnelDns.DEFAULT_URL)).host
+        callback.onLog(if (fakeIp) "DNS mode: FakeIP (destination A/AAAA answers do not use DoH)"
+            else "DNS mode: real answers via DoH $dnsHost through VPN")
     }
 
     @Synchronized
@@ -172,6 +189,7 @@ class SingBoxEngine(
         interfaceListener = null
 
         // The service calls this on its IO scope and waits before announcing DISCONNECTED.
+        runCatching { trafficClient?.disconnect() };trafficClient=null
         val server = commandServer
         commandServer = null
         try {
@@ -184,6 +202,38 @@ class SingBoxEngine(
             try { server?.close() } catch (e: Exception) { Log.e(TAG, "Error closing command server", e) }
             callback.onStopped()
         }
+    }
+
+    private var trafficClient: CommandClient? = null
+    var runtimeDns: TunnelDnsSettings? = null
+    private val trafficLock = Any()
+    private var nativeRx=0L; private var nativeTx=0L
+    private var aggregateRx=0L; private var aggregateTx=0L
+    private var trafficGeneration=0L
+    fun trafficTotals(): Pair<Long,Long> = synchronized(trafficLock) { aggregateRx to aggregateTx }
+    private fun startTrafficClient() {
+        val generation=synchronized(trafficLock) { ++trafficGeneration }
+        val handler = object : CommandClientHandler {
+            override fun clearLogs() {}; override fun connected() {}; override fun disconnected(message: String?) {}
+            override fun initializeClashMode(modes: StringIterator?, current: String?) {}
+            override fun setDefaultLogLevel(level: Int) {}; override fun updateClashMode(mode: String?) {}
+            override fun writeConnectionEvents(events: ConnectionEvents?) {}; override fun writeDNSQuery(query: DnsQuery?) {}
+            override fun writeGroups(groups: OutboundGroupIterator?) {}; override fun writeLogs(logs: LogIterator?) {}
+            override fun writeOutbounds(outbounds: OutboundGroupItemIterator?) {}
+            override fun writeStatus(status: StatusMessage?) {
+                if(status == null || !status.trafficAvailable) return
+                synchronized(trafficLock) {
+                    if(generation != trafficGeneration) return
+                    val rx=status.downlinkTotal.coerceAtLeast(0); val tx=status.uplinkTotal.coerceAtLeast(0)
+                    aggregateRx += if(rx>=nativeRx) rx-nativeRx else rx
+                    aggregateTx += if(tx>=nativeTx) tx-nativeTx else tx
+                    nativeRx=rx;nativeTx=tx
+                }
+            }
+        }
+        trafficClient=CommandClient(handler,CommandClientOptions().apply {
+            addCommand(Libbox.CommandStatus); setStatusInterval(1_000_000_000)
+        }).also { it.connect() }
     }
 
     fun isRunning(): Boolean = isRunning.get()
@@ -233,11 +283,28 @@ class SingBoxEngine(
     // PlatformInterface Implementation - Called by Go runtime
     // =========================================================================
 
+    private var protectOpenConnectSockets = false
     override fun autoDetectInterfaceControl(fd: Int) {
         // Called when sing-box needs to protect a socket for outbound connections
         Log.i(TAG, "autoDetectInterfaceControl: protecting fd=$fd")
         val result = callback.protectSocket(fd)
         check(result) { "Could not protect sing-box outbound socket" }
+        if (protectOpenConnectSockets) runCatching {
+            val preferences=context.getSharedPreferences("vpn_app_prefs",0)
+            val size=preferences.getInt("buffer_size",2*1024*1024).coerceIn(65536,8388608)
+            android.os.ParcelFileDescriptor.fromFd(fd).use { duplicate ->
+                val socket=duplicate.fileDescriptor
+                android.system.Os.setsockoptInt(socket,android.system.OsConstants.SOL_SOCKET,android.system.OsConstants.SO_RCVBUF,size)
+                android.system.Os.setsockoptInt(socket,android.system.OsConstants.SOL_SOCKET,android.system.OsConstants.SO_SNDBUF,size)
+                try {
+                    android.system.Os.setsockoptInt(socket,android.system.OsConstants.IPPROTO_TCP,
+                        android.system.OsConstants.TCP_NODELAY,if(preferences.getBoolean("tcp_no_delay",true)) 1 else 0)
+                } catch (error: android.system.ErrnoException) {
+                    if (error.errno != android.system.OsConstants.ENOPROTOOPT &&
+                        error.errno != android.system.OsConstants.EOPNOTSUPP) throw error
+                }
+            }
+        }.onFailure { Log.w(TAG,"OpenConnect socket tuning unavailable",it) }
         Log.i(TAG, "autoDetectInterfaceControl: fd=$fd protected=$result")
     }
 
@@ -479,10 +546,11 @@ class SingBoxEngine(
         // libbox currently does not create Android notifications through this platform adapter.
     }
 
-    private data class InterfaceInfo(val name: String, val index: Int, val networkHandle: Long = 0)
+    private data class InterfaceInfo(val name: String, val index: Int, val networkHandle: Long = 0, val addresses: String = "")
 
     @Volatile
-    private var lastKnownInterface: InterfaceInfo = InterfaceInfo("wlan0", 1)
+    private var lastKnownInterface: InterfaceInfo = InterfaceInfo("", -1)
+    private val lostNetworkHandles = java.util.concurrent.ConcurrentHashMap.newKeySet<Long>()
 
     private fun isNetworkMetered(): Boolean {
         return try {
@@ -498,67 +566,35 @@ class SingBoxEngine(
 
     private fun getDefaultInterfaceInfo(): InterfaceInfo {
         try {
-            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-            val activeNetwork = cm.activeNetwork
-            if (activeNetwork != null) {
-                val caps = cm.getNetworkCapabilities(activeNetwork)
-                val linkProps = cm.getLinkProperties(activeNetwork)
-                val ifName = linkProps?.interfaceName
-                if (caps != null && !caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN) &&
-                    !ifName.isNullOrEmpty() && !ifName.startsWith("tun")
-                ) {
-                    val idx = try {
-                        java.net.NetworkInterface.getByName(ifName)?.index ?: 0
-                    } catch (e: Exception) { 0 }
-                    if (idx > 0) {
-                        val info = InterfaceInfo(ifName, idx, activeNetwork.networkHandle)
-                        lastKnownInterface = info
-                        return info
-                    }
-                }
-            }
-
-            // Fallback 1: search allNetworks for physical network
-            for (network in cm.allNetworks) {
-                val caps = cm.getNetworkCapabilities(network) ?: continue
-                if (caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) continue
-
-                val isPhysical = caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
-                        caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) ||
-                        caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
-                if (!isPhysical) continue
-
-                val linkProps = cm.getLinkProperties(network) ?: continue
-                val ifName = linkProps.interfaceName ?: continue
-                if (ifName.startsWith("tun")) continue
-
-                val idx = try {
-                    java.net.NetworkInterface.getByName(ifName)?.index ?: 0
-                } catch (e: Exception) { 0 }
-                if (idx > 0) {
-                    val info = InterfaceInfo(ifName, idx, network.networkHandle)
-                    lastKnownInterface = info
-                    return info
-                }
-            }
-
-            // Fallback 2: scan java.net.NetworkInterface for any active physical interface with IPv4
-            val netInterfaces = java.net.NetworkInterface.getNetworkInterfaces()
-            while (netInterfaces != null && netInterfaces.hasMoreElements()) {
-                val netIf = netInterfaces.nextElement()
-                if (!netIf.isLoopback && netIf.isUp && !netIf.name.startsWith("tun") && !netIf.name.startsWith("dummy")) {
-                    val hasIpv4 = netIf.inetAddresses?.asSequence()?.any { !it.isLoopbackAddress && it is java.net.Inet4Address } == true
-                    if (hasIpv4 && netIf.index > 0) {
-                        val info = InterfaceInfo(netIf.name, netIf.index)
-                        lastKnownInterface = info
-                        return info
-                    }
-                }
+            val cm = context.getSystemService(ConnectivityManager::class.java)
+            val candidates = cm.allNetworks.filter { network ->
+                val caps = cm.getNetworkCapabilities(network)
+                network.networkHandle !in lostNetworkHandles &&
+                    caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true &&
+                    !caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
+            }.sortedWith(compareByDescending<Network> {
+                cm.getNetworkCapabilities(it)?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
+            }.thenByDescending { it == cm.activeNetwork }.thenByDescending {
+                val caps = cm.getNetworkCapabilities(it)
+                caps?.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) == true ||
+                    caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+            })
+            for (network in candidates) {
+                val props = cm.getLinkProperties(network) ?: continue
+                val name = props.interfaceName ?: continue
+                if (name.startsWith("tun")) continue
+                val index = java.net.NetworkInterface.getByName(name)?.index ?: continue
+                if (index <= 0) continue
+                // A renewed IPv4 address on the same interface also invalidates old TCP sessions.
+                val addresses = props.linkAddresses.filter { it.address is java.net.Inet4Address }
+                    .map { it.toString() }.sorted().joinToString(",")
+                return InterfaceInfo(name, index, network.networkHandle, addresses).also { lastKnownInterface = it }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error getting default interface info: ${e.message}")
         }
-        return lastKnownInterface
+        // libbox uses index -1 to pause traffic and invalidate the lost physical path.
+        return InterfaceInfo("", -1).also { lastKnownInterface = it }
     }
 
     override fun startDefaultInterfaceMonitor(listener: InterfaceUpdateListener?) {
@@ -570,6 +606,7 @@ class SingBoxEngine(
         networkCallback = null
         // Store the listener for future network changes
         interfaceListener = listener
+        lostNetworkHandles.clear()
         
         // Immediately notify sing-box of the current default interface
         // This triggers socket protection mechanisms
@@ -578,24 +615,28 @@ class SingBoxEngine(
                 val info = getDefaultInterfaceInfo()
                 val isExpensive = isNetworkMetered()
                 val updates = InterfaceUpdateFilter()
-                updates.changed(PhysicalInterfaceState(info.name, info.index, info.networkHandle, isExpensive))
+                updates.changed(PhysicalInterfaceState(info.name, info.index, info.networkHandle, isExpensive, info.addresses))
                 Log.i(TAG, "Notifying sing-box default interface: ${info.name} (index=${info.index}, expensive=$isExpensive)")
                 listener.updateDefaultInterface(info.name, info.index, isExpensive, false)
 
                 // Register network callback to notify sing-box when physical network changes
                 val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
                 val callback = object : ConnectivityManager.NetworkCallback() {
-                    override fun onAvailable(network: Network) { notifyChange() }
-                    override fun onLost(network: Network) { notifyChange() }
+                    override fun onAvailable(network: Network) { lostNetworkHandles.remove(network.networkHandle); notifyChange() }
+                    override fun onLost(network: Network) { lostNetworkHandles.add(network.networkHandle); notifyChange() }
                     override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) { notifyChange() }
                     override fun onLinkPropertiesChanged(network: Network, props: LinkProperties) { notifyChange() }
                     private fun notifyChange() {
                         try {
                             val updated = getDefaultInterfaceInfo()
-                            if (updated.name.isNotEmpty() && updated.index > 0) {
-                                val expensive = isNetworkMetered()
-                                val next = PhysicalInterfaceState(updated.name, updated.index, updated.networkHandle, expensive)
-                                if (isRunning.get() && interfaceListener === listener && updates.changed(next)) {
+                            val expensive = isNetworkMetered()
+                            val next = PhysicalInterfaceState(updated.name, updated.index, updated.networkHandle, expensive, updated.addresses)
+                            synchronized(updates) {
+                                val reset = updates.needsReset(next)
+                                if (interfaceListener === listener && updates.changed(next)) {
+                                    // The core compares name/index only. Signal loss first when Android
+                                    // reuses those values for a new Network or renewed IP address.
+                                    if (reset) listener.updateDefaultInterface("", -1, false, false)
                                     listener.updateDefaultInterface(updated.name, updated.index, expensive, false)
                                 }
                             }

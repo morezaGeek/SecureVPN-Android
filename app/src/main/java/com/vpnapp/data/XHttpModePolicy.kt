@@ -18,6 +18,11 @@ object XHttpModePolicy {
         profile.v2rayXhttpModeOverride?.takeIf { it in listOf("auto", "packet-up", "stream-up", "stream-one") }?.let {
             return profile.copy(v2rayType = it, v2rayOriginalXhttpMode = profile.v2rayOriginalXhttpMode ?: profile.v2rayType)
         }
+        // Explicit packet-up is a server requirement; the general stream-up preference
+        // must not replace it. A profile-specific manual override above still wins.
+        if ((profile.v2rayOriginalXhttpMode ?: profile.v2rayType) == "packet-up") {
+            return profile.copy(v2rayType = "packet-up", v2rayOriginalXhttpMode = null)
+        }
         return if (forceStreamUp) profile.copy(
             v2rayType = "stream-up",
             v2rayOriginalXhttpMode = profile.v2rayOriginalXhttpMode ?: profile.v2rayType

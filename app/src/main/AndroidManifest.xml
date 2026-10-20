@@ -13,15 +13,19 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <!-- Required for notifications on Android 13+ -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <!-- Demo ads do not need Advertising ID. Revisit only with the production consent flow. -->
-    <uses-permission android:name="com.google.android.gms.permission.AD_ID" tools:node="remove" />
-    <!-- Required to query installed user apps for Split Tunneling on Android 11+ -->
-    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" tools:ignore="QueryAllPackagesPermission" />
+    <uses-permission android:name="com.google.android.gms.permission.AD_ID" />
+    <!-- Split tunneling only needs apps that expose a launcher entry. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
 
-    <application android:allowBackup="true" android:extractNativeLibs="true" android:dataExtractionRules="@xml/data_extraction_rules" android:fullBackupContent="@xml/backup_rules" android:icon="@mipmap/ic_launcher" android:label="@string/app_name" android:roundIcon="@mipmap/ic_launcher_round" android:supportsRtl="true" android:theme="@style/Theme.VPNApp" tools:targetApi="34">
-        <!-- Official Google sample App ID: this build cannot earn advertising revenue. -->
+    <application android:allowBackup="true" android:dataExtractionRules="@xml/data_extraction_rules" android:fullBackupContent="@xml/backup_rules" android:icon="@mipmap/ic_launcher" android:label="${appLabel}" android:roundIcon="@mipmap/ic_launcher_round" android:supportsRtl="true" android:theme="@style/Theme.VPNApp" tools:targetApi="36">
+        <!-- Debug uses Google's demo App ID; Release uses SecureVPN's registered AdMob App ID. -->
         <meta-data android:name="com.google.android.gms.ads.APPLICATION_ID"
-            android:value="ca-app-pub-3940256099942544~3347511713" />
+            android:value="${admobAppId}" />
         <meta-data android:name="com.google.android.gms.ads.DELAY_APP_MEASUREMENT_INIT" android:value="true" />
 
         <activity android:name=".MainActivity" android:exported="true" android:theme="@style/Theme.VPNApp" android:launchMode="singleTask" android:windowSoftInputMode="adjustResize">
@@ -41,6 +45,8 @@
 
         <!-- VPN Service with Always-on support for Kill Switch -->
         <service android:name=".vpn.VpnConnectionService" android:process=":vpn" android:permission="android.permission.BIND_VPN_SERVICE" android:exported="false" android:foregroundServiceType="specialUse">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Maintains the user-started VPN tunnel and its required ongoing notification." />
             <intent-filter>
                 <action android:name="android.net.VpnService" />
             </intent-filter>

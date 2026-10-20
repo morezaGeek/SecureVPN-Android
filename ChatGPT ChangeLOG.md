@@ -1,4 +1,87 @@
+## Android — Independent audit addendum — 2026-10-21
+
+- Added source-verified notes on wall-clock duration, shutdown I/O outside the native deadline, history polling while retained in composition, and foreground ad-eligibility file polling. Risks are not claimed as reproduced device failures.
+- Added VPN/LAN no-direct-fallback acceptance scenarios and equal-workload energy comparisons. Documentation only; no runtime code, build, device settings or publication changed.
+- Report: Android-Battery-Refactor-Audit-2026-10-21.md.
+- Additional verified paths: Always-on restoration retains old profile connection fields after edits until the next manual connection; origin/exit-IP and connected-profile probes do not proactively close blocking I/O on job cancellation. Added to the same report; no runtime reproduction claimed.
+
+## Android — Battery and refactor audit — 2026-10-21
+
+- Read-only review of authoritative Android1.1.5 source. No phone was attached via ADB; no runtime battery percentage, CPU, energy or deep-sleep measurement claimed. No executable code, phone settings or APK changed.
+- Priorities: full-session partial wake lock, unconditional Wi-Fi lock policy (API-dependent behavior),1s stats pipeline,5s SQLite/LAN work,15s notification recovery. Preserve long-idle stability, final accounting and OEM notification behavior while measuring changes.
+- Architecture roadmap: session/resource owner and engine adapters, versioned typed IPC, lifecycle-aware telemetry, smaller feature ViewModels, transactional profile/subscription persistence. Preserve :vpn isolation, bounded native shutdown and browser concurrency regression.
+- Detailed Persian report: Android-Battery-Refactor-Audit-2026-10-21.md. Official Android wake-lock/Wi-Fi-lock guidance checked; battery savings are not quantified from static code.
+## Android 1.1.5 / code 10 — Fix LAN browser connection resets — 2026-10-21
+
+- User reported repeated Firefox PR_CONNECT_RESET_ERROR. Reproduced independently using explicit curl proxy requests: reset/aborted before CONNECT response. Physical phone had exactly 16 established LAN connections, matching the server's Semaphore(16) ceiling. Earlier one-request success did not establish browser-load reliability.
+- Added real-socket regression holding 33 CONNECT tunnels and checking data relay on each. Unmodified server failed precisely on tunnel 17. Increased bounded capacity to128; retained VPN-bound upstream sockets and existing HTTP/SOCKS/auth logic. A fixed capacity diagnostic now appears if the new ceiling is reached. Full JVM suite:85 tests,0 failures/errors.
+- Built minified SecureVPN Test1.1.5/code10 with existing preview package/signing. Signature, zipalign16KB, ELF LOAD/RELRO16KB checked; native libraries byte-identical to1.1.4 and matching symbols reused. Installed with adb install-r over user's1.1.4 without clearing data and reconnected the existing Germany/GozarVPN profile via observed Connect control.
+- Physical hotspot verification: held32 simultaneous TLS tunnels, then six additional HTTPS requests to Google,ipinfo,ipify all returned200 without resets. Explicit proxy IP-check again returned the VPN egress, different from the previously verified direct hotspot egress. Test sockets closed; phone VPN remains connected. Firefox UI not controlled or claimed tested.
+- Delivery: SecureVPN-Updates-2026-10-21-1.1.5 (APK, mapping, matching native symbols, native audit, JVM summary, physical concurrency results, hashes). No production AAB/Google Play upload/GitHub push in this turn. Authoritative source remains scratch/SecureVPN-Android-source; legacy root app unchanged.
+## Android 1.1.4 — Physical hotspot proxy verification — 2026-10-20
+
+- On the user's authorized physical phone (SecureVPN Test 1.1.4/code9), Windows was connected to the phone hotspot. Correct explicit curl HTTP proxy request returned CONNECT 200, verified HTTPS 200, and a different public egress from an explicit direct request. Active VPN belonged to the preview package. This confirms working HTTP LAN proxy over this physical hotspot in its current configuration; SOCKS5 and bypass toggles were not changed/tested in this follow-up.
+- Earlier PowerShell empty-string --noproxy argument was dropped, causing a request to the proxy address as a website followed by direct IP-check access. Corrected invocation uses curl.exe -q -v --noproxy localhost --proxy <hotspot-http-endpoint> <https-ip-check-url>.
+- Firefox screenshot also showed HTTPS proxy sharing unchecked. Later Firefox VPN error is not evidence of app relay failure. Windows computer-use helper refused Firefox control because URL policy enforcement is unsupported; no Firefox setting was changed. No app code/build/publication in this follow-up.
 # ChatGPT ChangeLOG
+
+## Android 1.1.4 / code 9 — بررسی دوبارهٔ LAN از دستگاه بیرونی — 2026-10-20
+
+- کاربر گزارش کرد سایت روی پورت LAN باز نمی‌شود و proxy error دارد؛ دربارهٔ مشترک‌بودن پورت HTTP/SOCKS5 نیز پرسید. فقط یک نوع روی پورت انتخابی فعال است، بنابراین شمارهٔ یکسان مجاز است؛ نوع هم‌زمان دوم نداریم. وضعیت شبکهٔ واقعی کاربر (هات‌اسپات یا مودم مشترک) هنوز مشخص نشده و گوشی فیزیکی در دسترس نبود.
+- تست قبلی1.1.3 فقط loopback/OpenConnect بود؛ این بار Windows host از TCP redirection شبیه‌ساز با peer غیرloopback به Android وصل شد. خود1.1.3 با HTTP و SOCKS5 روی OpenConnect و VLESS/DNS واقعی وFakeIP پاسخ HTTPS200 داد؛ ادعای خرابی عمومی relay یا اثبات علت گوشی کاربر نشده است.
+- یک regression واقعی بازتولید شد: در حالت `connected=false` موقتِ صفحه، Save پورت جدید را در prefs می‌نوشت اما intent به پروسهٔ :vpn نمی‌فرستاد، و runtimeLan قدیمی پورت قبلی را نگه می‌داشت. تست Android علیه1.1.3 با پیام «listener stays old» شکست خورد؛ روی1.1.4 همان تست پاس شد، پورت قدیمی بسته/پورت جدید باز و VPN متصل ماند. UI اکنون همیشه snapshot تنظیمات را می‌فرستد و به connected flag وابسته نیست.
+- حفاظت پاسخ سوکت پذیرفته‌شدهٔ LAN با VpnService.protect اضافه شد؛ این اقدام محافظتی است و علت گزارش کاربر به‌صورت قطعی به آن نسبت داده نشده است. سوکت خروجی و DNS همچنان به شبکهٔ VPN بسته‌اند و fallback اینترنت مستقیم ندارند. shutdown با lanLock و snapshot محلی status همگام شد.
+- وضعیت واقعی OFF/WAITING/LISTENING/ERROR، نوع/پورت فعال، شمارندهٔ ورودی و upstreamهای برقرارشده و خطای ثابتِ نوع/رمز/DNS/اتصال از پروسهٔ VPN به UI ارسال می‌شود؛ نام مقصد یا credential در این diagnostics قرار نمی‌گیرد. Refresh status VPN را وصل نمی‌کند. Forwarded به معنی برقرارشدن سوکت خروجی است، نه تکمیل دانلود.
+- آدرس‌های خصوصی hotspot/downstream از NetworkInterface با allowlist و حذف VPN/cellular کشف می‌شوند؛ انتخاب Local IP اصلی تغییر نکرد و permission اضافه نشد. IP و Port جدا نمایش داده می‌شوند و ورود http:// یا :port در Server اشتباه توضیح داده شد. hotspot واقعی/OEM خاص آزمایش نشده است.
+- اعتبارسنجی:۸۴ تست JVM،۶ تست Android UI/settings/live-port regression، و۳ اجرای تست واقعی VPN (OpenConnect،VLESS باDNS واقعی،VLESS باFakeIP) پاس شدند؛ هر اجرا HTTP وSOCKS5 از کامپیوتر HTTPS200 داد. محیط Android37.1 x86_64 با page size16384 بود. APK minified نهایی روی SecureVPN Test قبلی ارتقا یافت، version/statusOFF و UI دیداری بررسی شد.
+- تحویل `SecureVPN-Updates-2026-10-20-1.1.4/SecureVPN-1.1.4-test-alongside-play.apk`: package آزمایشی preview و demo ads، نصب کنار Google Play با تنظیمات مستقل. mapping مخصوص preview، native symbols مطابق، native16KB audit، نتایج بدون secrets وSHA256 موجودند. باینری native با1.1.3 یکسان است.
+- این نوبت AAB اصلی ساخته نشد؛ Play declaration، انتشار، website deployment و GitHub push انجام نشد. تغییر محلی privacy از1.1.3 هنوز پیش از انتشار عمومی بعدی نیازمند deployment است. root app قدیمی دست نخورد؛ سورس معتبر `scratch/SecureVPN-Android-source` است. سایر تغییرات dirty حفظ شدند.
+
+
+## Android 1.1.3 / code 8 — رفع ابهام و رمز Share VPN over LAN — 2026-10-19
+
+- درخواست کاربر: مشخص‌بودن HTTP یا SOCKS5 و رفع رمز پذیرفته‌نشده. سورس معتبر در `scratch/SecureVPN-Android-source` است؛ `app/` قدیمی ریشه تغییر نکرد.
+- هر پورت اکنون نوع انتخابی مشخص دارد. HTTP و HTTPS CONNECT بدون رمز کار می‌کنند؛ فیلد رمز HTTP حذف شد و Proxy-Authorization قدیمی به مقصد منتقل نمی‌شود. SOCKS5 از احراز هویت استاندارد RFC1929 با نام کاربری و رمز دلخواه UTF-8 تا۲۵۵بایت پشتیبانی می‌کند؛ کلید خاموش‌کردن احراز هویت نیز دارد. تنظیمات قدیمی و رمز قبلی مهاجرت می‌کنند.
+- راهنمای استفاده، انتخاب نوع، ویرایش/نمایش رمز، اعتبارسنجی پورت و Save LAN settings اضافه شد. نوع ذخیره‌شده و endpoint مشخص‌اند؛ خاموش‌کردن اشتراک با ورودی نامعتبرِ ذخیره‌نشده مسدود نمی‌شود. تغییر تنظیمات به سرویس فعال ارسال می‌شود.
+- سوکت خروجی و DNS همچنان فقط از شبکهٔ VPN ایجاد می‌شوند؛ fallback به اینترنت مستقیم اضافه نشد. اتصال‌های فعال با خاموش‌کردن LAN/VPN بسته می‌شوند، نوع/رمز اشتباه رد می‌شود. قابلیت TCP proxy است؛ UDP و کل ترافیک hotspot را عبور نمی‌دهد. Android Wi-Fi proxy از HTTP استفاده می‌کند؛ برای SOCKS5 کلاینت سازگار لازم است.
+- آزمون نهایی: ۷۳ تست JVM، ۴ تست Android UI/settings و۲ تست VPN واقعی روی شبیه‌ساز اختصاصی Android37.1 با page size16384 پاس شدند. HTTP بدون رمز و SOCKS5 با رمز انتخابی هر دو HTTPS200 گرفتند؛ رمز غلط رد شد و خاموش‌کردن listener تأیید شد. APK نهایی minified جداگانه نصب، نبود کانفیگ اولیه و UI/ذخیرهٔ نوع بررسی شدند؛ تست روی گوشی فیزیکی ادعا نشده است.
+- خروجی در `SecureVPN-Updates-2026-10-19-1.1.3`: AAB اصلی، APK امضاشده با upload key و APK جداگانهٔ `SecureVPN Test` با package=`com.rahanetmci.securevpn.preview` و demo ads. نسخهٔ تست کنار Google Play نصب می‌شود و پروفایل‌ها مستقل‌اند. APK اصلی برای ارتقای نصب Play با امضای متفاوت تضمین نمی‌شود.
+- امضای APKها و zipalign16KB تأیید شد. باینری‌های native با1.1.2 یکسان‌اند؛ ممیزی LOAD/RELRO16KB، symbolهای مطابق، mappingهای جداگانه، نتایج آزمون، release notes و SHA256 در پوشهٔ تحویل ثبت شدند. AAB امضاشده jar verified دارد؛ اخطار self-signed/manifest-order مشابه bundle قبلی1.1.2 است.
+- متن محلی `website/privacy/index.html` برای HTTP بدون رمز و رمز دلخواه SOCKS5 به‌روز شد؛ استقرار سایت انجام نشده و پیش از انتشار بعدی لازم است. این نوبت هیچ Play declaration، انتشار، push یا تغییر حساب انجام نشد. گزارش تأیید برنامه از کاربر دریافت شد و Console مجدداً بررسی نشده است.
+
+
+## پیگیری وضعیت AdMob — 2026-10-09
+
+بررسی تازهٔ App settings و جست‌وجوی دقیق `com.rahanetmci.securevpn`: App store details خالی (`—`) است و جست‌وجوی Google Play نتیجه ندارد؛ اتصال Store انجام نشده است. screenshot فعلی App verification را `Not required` با Verify app غیرفعال نشان می‌دهد؛ این وضعیت به معنی تأیید app-ads.txt نیست و نباید با Verified اشتباه شود. طبق راهنمای Store linking گوگل، برای لینک‌کردن باید اپ در فروشگاه پشتیبانی‌شده عمومی باشد؛ محدودبودن نسخه به Closed testing با پیدا نشدن آن سازگار است، اما علت نهایی فقط از نتیجهٔ جست‌وجو اثبات نمی‌شود. هیچ تنظیم خارجی تغییر نکرد.
+
+جزئیات `Requires review` در overview اپ باز شد: برای رفع محدودیت نمایش تبلیغ، اتصال به فروشگاه پشتیبانی‌شده و بررسی اپ لازم است؛ متن AdMob تصریح می‌کند تأیید حساب جدید باید پیش از بررسی اپ انجام شود. در Settings → Linked services، Google Ads و Firebase هر دو `Not linked` هستند؛ Google Ads برای campaigns و Firebase برای analytics/reporting است و این اتصال‌ها جایگزین Store linking نیستند. هیچ اتصال یا تنظیم خارجی تغییر نکرد.
+
+داشبورد Home پس از reload و فهرست Apps دوباره بررسی شدند: حساب همچنان `Your account is being verified` و تأییدنشده است؛ payment profile کامل است. SecureVPN همچنان `Requires review / Limited ad serving / Add store to lift limit` و بدون Store یا package لینک‌شده است. تأیید جدیدی مشاهده نشد. این پیگیری فقط خواندنی بود و کد یا تنظیمات خارجی تغییر نکردند.
+
+## بررسی تبلیغات Play و پیام رضایت جهانی — 2026-10-08
+
+- کاربر عدم نمایش تبلیغ بعد از دو اتصال/قطع موفق روی چند گوشی را گزارش کرد. شناسه‌های live AdMob در manifest و DEX فایل واقعی Play 1.0.0/code1 تأیید شد؛ مشکل demo ID مشاهده نشد. این repository سورس واقعی Play است.
+- داشبورد که ابتدا 403 می‌داد، در تلاش دوباره با Chrome باز شد: حساب هنوز در verification است، payment profile کامل است؛ اپ `Requires review / Limited ad serving` و بدون Store لینک‌شده است. جست‌وجوی package دقیق در Add store هیچ نتیجه‌ای نداد؛ اتصال جعلی به اپ یا فروشگاه دیگر انجام نشد.
+- پیام consent وجود نداشت؛ پیش‌نویس English برای SecureVPN با privacy URL و گزینه‌های پذیرش، رد و مدیریت رضایت ذخیره شد. انتشار عامل ابتدا توسط بررسی خودکار به‌دلیل نبود تأیید صریح همین تنظیم حریم خصوصی رد شد. کاربر خودش Publish را زد و محدودهٔ جهانی خواست؛ پیام منتشرشده باز و `Published` و `Everywhere` تأیید شد. برای این تنظیم سروری APK/AAB جدید لازم نیست؛ propagation طبق دیالوگ AdMob ممکن است تا یک ساعت طول بکشد.
+- پیام جهانی تضمین نمایش تبلیغ جهانی یا تأیید حساب/اپ نیست. محدودیت‌های باقی‌ماندهٔ AdMob و نیاز به Store linking/app readiness/app-ads.txt در `ANDROID_ADS.md` ثبت شد. دسترسی ADB به گوشی وجود نداشت؛ نمایش creative واقعی، علت خطای گوشی و صحت شمارنده روی آن دستگاه ادعا نشد. کد اپ در این مرحله تغییر نکرد.
+- شواهد در `scratch/ads-audit` در workspace ذخیره شدند؛ نسخهٔ مستندات در ریشه و repository خصوصی اندروید هر دو به‌روز شدند. مراحل بعد: تأیید حساب، Store linking پس از قابل پیدا شدن صفحه و در صورت ادامهٔ مشکل خواندن لاگ UMP/LoadAdError دستگاه.
+
+## آخرین وضعیت انتشار Play و رفع خطای Foreground Service — 2026-10-08
+
+این بخش بر وضعیت‌های قدیمیِ «آپلود نشده/ذخیره نشده» در بخش‌های تاریخی مقدم است.
+
+- برچسب AI فقط برای آیکون و feature graphic با تأیید کاربر ارسال شد؛ چهار screenshot واقعی برچسب نخوردند. Store listing ذخیره شد و Ready to send for review است.
+- سایت privacy اصلاح‌شده با تأیید قبلی در Cloudflare Pages منتشر شد؛ URL حریم خصوصی HTTP200 داد و وجود متن encryption/HTTPS تأیید شد. DNS تغییر نکرد.
+- AAB Play1.0.0 / versionCode1 در پیش‌نویس Closed testing / Alpha آپلود و پردازش شد. Console بسته را پذیرفت و دانلود هر نصب را37.6MB نشان داد. releaseId=1، trackId=4698309559748468453. ارسال برای review هنوز انجام نشده است.
+- کاربر کشورها/آزمایشگران را اصلاح کرد:178 کشور/منطقه و First Testers با24 عضو مشاهده شد. ایمیل‌ها در این گزارش درج نشده‌اند و پیام دعوت ارسال نشده است.
+- آخرین review تنها یک خطای مسدودکننده داشت: اظهارنامهٔ FOREGROUND_SERVICE_SPECIAL_USE. هشدار native debug symbols در این صفحه مسدودکننده نیست.
+- Manifest و VpnConnectionService بررسی شدند؛ specialUse تونل VPN آغازشده توسط کاربر و اعلان را حفظ می‌کند. Other انتخاب و توضیح انگلیسی واقعی در فرم نوشته شد. URL برنامه‌ریزی‌شدهٔ فیلم نیز وارد شد؛ Save هنوز زده نشده است.
+- APK ساخته‌شده از همان AAB روی شبیه‌ساز Android14 نصب شد. فیلم واقعی اجازهٔ Android VPN، اتصال، اجرای پس‌زمینه، اعلان Disconnect و حذف VPN/اعلان پس از قطع تهیه شد؛ پینگ دو اتصال226/235ms بود. آزمون16KB و یک‌شبه در این نوبت انجام نشد.
+- پروفایل مجاز Dallas فقط در نصب شبیه‌ساز با نام User VPN profile استفاده شد؛ هیچ کانفیگ به AAB/APK اضافه نشد. IPها/آدرس سرور در فیلم redacted هستند و چرخهٔ دوم چهار برابر سریع شده است. فایل خام/credentialها در scratch خصوصی ریشه‌اند.
+- فیلم `website/media/securevpn-foreground-service-demo.mp4`،514746 بایت، SHA256 `68B54407CF28752E284CF73E64010ECABD34D6BC17A81D7FBCEFAC9A6AB2DDEA` آماده است. نسخهٔ تحویل و ZIP شش‌فایلی در ریشهٔ پروژه موجودند. فیلم هنوز منتشر نشده و لینک آنلاین فعلاً تأیید نشده است.
+- تأیید action-time برای انتشار فیلم روی سایت و ذخیرهٔ اظهارنامه درخواست شده و در انتظار پاسخ است. Cloudflare در آخرین مشاهده به فهرست deployments برگشته بود؛ ZIP برای deployment بعدی باید دوباره آماده شود.
+- ادامه: انتشار/بررسی URL فیلم، Save اظهارنامه، review دوبارهٔ release، Save release و ارسال تغییرات با تأیید مالک، سپس opt-in حداقل12 آزمایشگر برای14روز. عضویت در فهرست به‌تنهایی opt-in نیست.
+- مسئلهٔ native16KB قبلی پابرجاست؛ conscrypt/OpenConnect/stoken ELF64 هنوز4KB هستند. پیام رضایت AdMob هنوز ساخته/منتشر نشده است. در این نوبت commit/push جدید انجام نشد.
 
 این فایل برای تحویل ادامهٔ توسعهٔ SecureVPN به Antigravity نوشته شده است.
 
@@ -717,3 +800,311 @@ Sourceهای pinned خوانده‌شده برای MTU و XHTTP در `scratch/co
 - بررسی واقعی مرورگر در همان نشست: صفحهٔ اصلی، `/privacy/`، `/support/` و `/app-ads.txt` روی دامنهٔ اختصاصی با HTTPS باز شدند. محتوای `app-ads.txt` با ناشر AdMob مطابقت داشت.
 - مسیر اولیهٔ Workers به خطای 1101 می‌رسید؛ برای سایت ایستا از Pages استفاده شد. Worker آزمایشی حذف نشد و مشاهده‌پذیری موقتی آن خاموش است؛ دامنه به آن Worker متصل نیست.
 - آدرس عمومی سایت: `https://securevpn.rahanetmci.com`. این انتشار سایت توسعه‌دهنده است و به معنی انتشار اپ در Google Play یا تأیید app-ads.txt در AdMob نیست.
+
+## آماده‌سازی انتشار Google Play — 2026-10-08
+
+- کاربر شناسهٔ `com.rahanetmci.securevpn` را برای اپ پلی انتخاب کرد و تأیید کرد نصب و استفاده رایگان، با تبلیغات درون‌برنامه‌ای باشد. کاربر هر دو اظهارنامهٔ اولیهٔ سازگاری با سیاست‌های Play و مجازبودن صادرات نرم‌افزار رمزنگاری‌شده را نیز صریحاً تأیید کرد و خواست بررسی فنی انجام شود؛ هنوز فرم Create app ارسال نشده است.
+- `applicationId` در سورس و کپی خصوصی اندروید به شناسهٔ انتخاب‌شده تغییر کرد؛ `namespace` برابر `com.vpnapp` ماند. APKهای sideload با `com.vpnapp` اپ جداگانه خواهند بود و با نسخهٔ Play ارتقای درجا نمی‌شوند.
+- تنظیم build به compile/target SDK36، AGP8.10.1 و Gradle8.11.1 ارتقا یافت؛ اجرای `testDebugUnitTest` و `bundleRelease` شروع شده، نتیجه هنوز نهایی نیست.
+- پیش از درخواست VPN سیستمی، گفت‌وگوی افشای واضح اضافه شد: عبور ترافیک از سرور انتخابی و پردازش احتمالی توسط گرداننده، درخواست‌های IP/latency به سرویس‌های بیرونی، و لینک سیاست حریم خصوصی. کاربر باید صریحاً Agree and continue بزند.
+- `QUERY_ALL_PACKAGES` حذف شد؛ فهرست تونل شکافته فقط اپ‌های دارای launcher entry را با `<queries>` هدفمند می‌بیند. صفحهٔ حریم خصوصی سایت مطابق همین دامنه و بکاپ احتمالی پروفایل/اشتراک ذخیره‌شده اصلاح شد.
+- برای foreground service از نوع `specialUse`، subtype مربوط به نگه‌داشتن تونل VPN و اعلان جاری در Manifest مشخص شد.
+- بررسی تاریخ API و 16KB اصلاح شد: API36 از 31اوت2026 شرط ارسال اپ تازه است. nativeهای 4KB باید برای دستگاه‌های 16KB رفع شوند، اما Google Play توقف انتشار update ناسازگار را از 1فوریه2027 اعلام کرده؛ پس 16KB مانع فوری ارسال اولیه در اکتبر 2026 نیست.
+- صفحهٔ Play Console باز است و پکیج/قیمت/نوع انتخاب شده‌اند اما اظهارنامه‌ها، ایجاد app record و انتشار هنوز ثبت نشده‌اند. هیچ upload key یا AAB ساخته نشده و build هنوز در حال اجراست.
+
+## بررسی انطباق Google Play — 2026-10-08
+
+- اظهارنامه‌های Play برای تبلیغات شناسه‌ای (بله؛ تبلیغ، تحلیل و ضدتقلب)، اپ دولتی (خیر)، قابلیت مالی (ندارد)، قابلیت سلامت (ندارد) و مخاطب سنی (۱۳–۱۵، ۱۶–۱۷ و ۱۸+) در پیش‌نویس Console ذخیره شدند. هنوز ارسال برای بازبینی انجام نشده است.
+- ممیزی کد نشان داد VLESS بدون TLS/REALITY یا VLESS Encryption، VMess با `none`/`zero` بدون TLS، و Shadowsocks با روش `none` مسیر بدون رمزنگاری می‌ساختند. سیاست VpnService گوگل رمزنگاری همهٔ داده‌ها از دستگاه تا endpoint را لازم می‌داند.
+- `TunnelEncryptionPolicy` این پروفایل‌ها را قبل از درخواست اجازهٔ VPN و هنگام ساخت outbound رد می‌کند؛ خطا در صفحهٔ اصلی و لاگ نشان داده می‌شود. disclosure قبل از اتصال و Privacy Policy فارسی/انگلیسی هم مطابق رفتار جدید اصلاح شدند.
+- سه تست واحد برای VLESS، VMess، Shadowsocks و پروتکل‌های دارای TLS اضافه شد. اجرای `testDebugUnitTest` کامل نشد: Gradle نتوانست loopback محلی را برقرار کند (`Unable to establish loopback connection`)؛ تست‌ها باید در محیط build عادی اجرا شوند.
+- منابع: [سیاست VPN سرویس Play](https://support.google.com/googleplay/android-developer/answer/12564964?hl=en)، [راهنمای VLESS در Project X](https://xtls.github.io/en/config/inbounds/vless.html)، [جدول امنیت انتقال Project X](https://xtls.github.io/en/config/transport.html)، [VMess در sing-box](https://sing-box.sagernet.org/configuration/outbound/vmess/) و [Shadowsocks در sing-box](https://sing-box.sagernet.org/configuration/outbound/shadowsocks/).
+
+### اصلاح دریافت امن سابسکریپشن و ادامهٔ Data safety — 2026-10-08
+
+- بررسی امنیتی نشان داد refresh سابسکریپشن با `HttpURLConnection` عمومی و redirect خودکار انجام می‌شد؛ لینک دارای توکن می‌توانست از HTTPS به HTTP downgrade شود.
+- دریافت سابسکریپشن حالا فقط HTTPS را می‌پذیرد، redirect را دستی و حداکثر پنج مرحله دنبال می‌کند، downgrade به HTTP را رد می‌کند و اتصال را در همهٔ مسیرهای خروج می‌بندد.
+- تست واحد برای URL امن، رد URL ناامن و redirect امن/ناامن اضافه شد. Privacy Policy در هر دو زبان نحوهٔ ارسال URL احتمالیِ دارای token را شفاف کرد.
+- در فرم Data safety، پاسخ‌های پیشنهادی بر اساس کد عبارت‌اند از: داده جمع‌آوری می‌شود؛ انتقال رمزنگاری‌شده است؛ برنامه امکان ساخت حساب SecureVPN ندارد. این مرحله هنوز در فرم ذخیره نشده است؛ مرحلهٔ بعد باید دسته‌های واقعی SDK تبلیغات و درخواست‌های IP/Geo را مشخص کند.
+
+
+# ادامهٔ انتشار Android، اصلاح آیکون و فایل نهایی — 2026-10-08
+
+## وضعیت قطعی آخرین ادامه — 2026-10-08
+
+این بخش جایگزین وضعیت‌های قدیمیِ بخش‌های تاریخی زیر است. سورس انتشار Play در `scratch/SecureVPN-Android-source` است؛ سورس sideload ریشه در این مرحله به پکیج و ابزار انتشار Play منتقل نشده است.
+
+- رکورد SecureVPN در Play Console ایجاد شده: `com.rahanetmci.securevpn`، رایگان با تبلیغات، نسخهٔ 1.0.0 / versionCode 1، compile/target SDK 36 و min SDK 26. namespace داخلی `com.vpnapp` است.
+- کلید upload مستقل ساخته شده و فایل‌های کلید/رمز در سورس خصوصی ignored هستند. بکاپ امن جداگانهٔ آن‌ها ضروری است؛ کلید در پوشهٔ تحویل عمومی کپی نشده است.
+- ابزار نهایی: AGP 8.13.2، Gradle 8.13، Kotlin و Compose compiler plugin 2.3.21، JDK 17، Mobile Ads 25.5.0، UMP 4.0.0. مهاجرت compilerOptions انجام شد؛ suppress compatibility flag حذف شد.
+- `testDebugUnitTest bundleRelease` موفق: 46 تست واحد در 16 suite، بدون failure/error. چهار تست Android روی شبیه‌ساز Android 14 نیز پاس شدند: نصب خالی، ماندگاری چرخهٔ تبلیغ و بارگذاری یا شکست کنترل‌شدهٔ بنر آزمایشی بدون مسدودکردن کنترل اتصال. نمایش قطعی آگهی واقعی یا آزمون درآمد ادعا نمی‌شود.
+- AAB با upload key امضا شده، bundletool validate و بررسی امضا موفق‌اند. بستهٔ نهایی 139194900 بایت است؛ SHA-256: `6dd7186fbf58b48f9d013605e62cb1ee08cb3c2fae45c7e7546f0b9cb6b7be8d`.
+- فایل تحویل: `H:/Antigravity Projects/VPN APP/SecureVPN-Play-1.0.0/SecureVPN-1.0.0-play.aab`. این فایل برای Play است و مستقیماً مانند APK نصب نمی‌شود. نصب smoke از APK ساخته‌شده با bundletool موفق بود؛ دادهٔ اولیه هیچ پروفایل یا ساب آماده‌ای ندارد.
+- آیکون فروشگاه اصلاح شد: زمینهٔ charcoal یکپارچه، سپر teal بزرگ و globe/check سفید؛ قاب و گردی بیرونی از خود Play اعمال می‌شود. feature graphic هماهنگ ساخته شد. تولید مجدد با `scripts/generate-store-assets.ps1`؛ آیکون launcher بومی در این مرحله تغییر نکرده است.
+- متن فروشگاه، آیکون 512×512، feature graphic 1024×500 و چهار screenshot واقعی home/settings در تم روشن/تیره در Console آماده‌اند. در فرم AI label فقط آیکون و feature انتخاب شده‌اند؛ screenshots واقعی انتخاب نشده‌اند. دکمهٔ نهایی Label assets and submit و ذخیرهٔ نهایی listing هنوز زده نشده‌اند و منتظر تأیید لحظه‌ای کاربر هستند.
+- Data safety به‌صورت draft ذخیره شده؛ اظهارنامه‌های قبلاً تأییدشده نیز ذخیره شده‌اند. ارسال برای review، upload AAB و ایجاد release هنوز انجام نشده است.
+- متن به‌روز privacy شامل رمزنگاری تونل و HTTPS ساب‌ها در سورس آماده است. ZIP پنج‌فایلی در فرم production سایت Cloudflare Pages بارگذاری شده؛ Save and deploy هنوز زده نشده و تأیید آن در انتظار پاسخ است. متن آنلاین هنوز نسخهٔ قبلی است؛ DNS تغییر نکرده است.
+- ابزار Computer Use این نوبت را به‌دلیل ناتوانی در تشخیص مطمئن URL مرورگر برای اعمال سیاست متوقف کرد. هیچ ارسال یا deploy نهایی انجام نشد. در ادامهٔ بعدی ابتدا وضعیت تازهٔ مرورگر و پاسخ تأییدها خوانده شود؛ از indexهای UI قدیمی استفاده نشود.
+- Production این حساب هنوز قفل است: Console به 12 آزمایشگر با عضویت پیوستهٔ 14 روز در closed testing نیاز دارد؛ فعلاً صفر آزمایشگر است. انتشار فوری عمومی ممکن نیست.
+- باقی‌مانده: تأیید/ثبت نهایی listing و سایت، ایجاد و انتشار پیام consent AdMob، بارگذاری AAB و بررسی خطاهای Console، اظهارنامه و فیلم VpnService/foreground service در صورت درخواست، انتخاب آزمایشگران و شروع closed test، سپس درخواست دسترسی Production و review.
+- بررسی native با `scripts/audit-bundle-native.py`: libbox در ABIهای 64-bit دارای PT_LOAD alignment 16KB است؛ libconscrypt_jni/libopenconnect/libstoken هنوز 4KB هستند. PAGE_ALIGNMENT_16K در BundleConfig به‌تنهایی سازگاری ELF یا اجرای 16KB را اثبات نمی‌کند. بازسازی/جایگزینی nativeها و آزمون روی runtime 16KB باقی است؛ نباید انطباق کامل را ادعا کرد.
+- در این نوبت commit یا push Git انجام نشده است.
+
+### یادداشت رفع خطاهای ساخت
+
+Gradle با JDK 25 و TEMP بلند sandbox در socket محلی شکست می‌خورد؛ JDK 17، GRADLE_USER_HOME اختصاصی و TEMP/TMP کوتاه `scratch/build-tmp` به‌همراه اجازهٔ اجرای socket محلی استفاده شد. import جاافتادهٔ TunnelEncryptionPolicy اضافه شد. برای metadata Kotlin 2.3، AGP به 8.13.2 و Gradle به 8.13 ارتقا یافت؛ build نهایی بدون هشدار ناسازگاری R8 metadata موفق شد.
+
+## سوابق تاریخی — وضعیت‌های قدیمی زیر ممکن است منسوخ باشند
+
+## ادامهٔ Console و تأییدهای صاحب حساب — 2026-10-08
+
+مرورگر مجدداً شناسایی شد و فرم AI label با فقط آیکون و feature انتخاب‌شده مشاهده شد. اولین کلیک ثبت، توسط بررسی خودکار به‌علت فقدان تأیید صریح همان اظهارنامه رد شد؛ ثبت انجام نشد. کاربر سپس صریحاً تأیید کرد: «بله، همین برچسب‌ها را ثبت و صفحه را ذخیره کن» و «بله، سایت به‌روز را منتشر کن». این دو تأیید دریافت شده‌اند و نباید بی‌جهت دوباره درخواست شوند.
+
+در فاصلهٔ انتظار، تب AdMob بررسی شد؛ صفحهٔ عمومی admob.google.com/home بود. پس از کلیک لینک داشبورد Sign in، ابزار Computer Use دوباره به‌دلیل عدم تشخیص مطمئن URL برای اعمال سیاست، این نوبت را متوقف کرد. نتیجهٔ navigation نامعلوم است. هیچ کلیک ثبت نهایی listing، deploy سایت، upload AAB یا انتشار release انجام نشد. نوبت بعد وضعیت تازهٔ Play/Cloudflare خوانده شود و دو اقدام مشخص تأییدشده انجام شوند؛ screenshot و indexهای قبلی قابل استفاده نیستند.
+
+## اصلاح ساب Dami، وضعیت اتصال و DNS — 2026-10-10
+
+### سورس و نسخهٔ تحویل
+
+- سورس فعال ویندوز `windows-app-tauri/` است؛ نسخهٔ جدید **2.0.38**. سورس فعال Android Play در **`scratch/SecureVPN-Android-source/`**، یک checkout مستقل از مخزن خصوصی اندروید است؛ نسخهٔ **1.0.1 / versionCode 2**، package `com.rahanetmci.securevpn`. ریشهٔ `app/` سورس قدیمی sideload است و در این نوبت تغییر نکرده؛ توسعهٔ بعدی نباید آن را با سورس فعلی Play اشتباه بگیرد.
+- فایل‌ها در `SecureVPN-Updates-2026-10-10/`: ستاپ Windows x64، APK release امضاشده با upload key، AAB برای Play، README و SHA256.json. APK حدود 128.4 MiB و AAB حدود 132.8 MiB است؛ AAB شامل چهار ABI است و حجم نصب Play با آن برابر نیست. کلید امضا و کانفیگ کاربران در پوشهٔ تحویل قرار نگرفتند.
+- اعتبار AAB با bundletool و امضای AAB/APK بررسی شد. امضای APK محلی upload key است؛ الزاماً با app-signing certificate نسخهٔ نصب‌شده از Play یکسان نیست. ارتقای نصب‌های Play باید با ارسال AAB جدید از همان رکورد Play انجام شود، نه با حذف اپ و داده‌ها برای نصب این APK.
+- در این نوبت Git commit/push، بارگذاری Play یا انتشار GitHub انجام نشد. بیلدها و تغییرات به‌صورت محلی آماده‌اند.
+
+### تفاوت ساب و راه‌حل اتصال
+
+- ساب Dami مجموعاً ۲۸ لینک دارد. لینک‌های فنلاند VLESS XHTTP به **ECH** با فرمت `cloudflare-ech.com+udp://1.1.1.1` نیاز دارند؛ parser و generator قبلی این مقدار را نگه نمی‌داشتند. ECH در مدل، ذخیره‌سازی، import/export، service intent اندروید و generatorهای اتصال/تست هر دو پلتفرم اضافه شد. شرح کلی این تغییر مربوط به VLESS این ساب است؛ پشتیبانی کامل همهٔ شکل‌های ECH در تمام فرمت‌ها ادعا نمی‌شود.
+- دامنهٔ ECH باید قبل از بازشدن TLS پروکسی توسط resolver مشخص‌شده در لینک resolve شود. rule اختصاصی ECH قبل از DNS عمومی/تست/FakeIP می‌آید تا bootstrap به خود پروکسی وابسته نشود. DNS resolver مستقیم نباید `detour: direct` صریح داشته باشد: هستهٔ pinned این dialer خالی را با «makes no sense» رد می‌کند؛ این مقدار حذف شد.
+- در A/B واقعی S1، بدون ECH هر دو `packet-up` و `stream-up` timeout شدند؛ با ECH و resolver UDP مشخص‌شده، درخواست gstatic و YouTube robots پاسخ داد. بنابراین تغییر MTU راه‌حل اصلی این ساب نبود؛ MTU در این نوبت تغییر نکرد.
+- ساب حالت صریح **packet-up** و extra شامل padding دارد. Android قبلاً force عمومی stream-up را روی آن اعمال می‌کرد. اکنون packet-up صریح ساب حفظ می‌شود؛ انتخاب دستی/هوشمند کاربر همچنان اولویت دارد و برای حالت auto/نامشخص، ترجیح stream-up باقی است. حالت اصلی ذخیره‌شده برای مهاجرت پروفایل‌های قبلاً force‌شده استفاده می‌شود. متن تنظیم Force XHTTP stream-up مطابق این رفتار اصلاح شد.
+- `Hysteria2 obfs=gecko` و اندازه‌های min/max packet در import/storage/export و generator هر دو پلتفرم حفظ شدند؛ اندازه‌ها در generator اعتبارسنجی می‌شوند. insecure اندروید فقط وقتی لینک صریحاً درخواست کند فعال می‌شود.
+- Android سه Shadowsocks این ساب را به‌علت `/` بعد از port در لینک SIP002 کنار می‌گذاشت (۲۵ از ۲۸ import می‌شد). authority/port جدا parse می‌شود و IPv6 با bracket هم پوشش داده شد؛ اکنون هر ۲۸ لینک import می‌شود.
+- Windows subscription parser متن ساده یا base64 با UTF-8 و URL-safe را می‌پذیرد. مسیر URI تنها یک بار decode می‌شود تا `%` واقعی در XHTTP/WS آسیب نبیند. export Hysteria2 و ECH/Gecko نیز تکمیل شد.
+- پس از نصب باید ساب موجود **یک بار refresh شود** تا فیلدهایی که قبلاً از لینک حذف می‌شدند دوباره وارد ذخیره‌سازی شوند. fixture خصوصی، فایل‌های تولیدی credentialدار و لاگ‌های تست فقط در scratch/ignored نگهداری شدند؛ در اپ کانفیگ آماده قرار نگرفت.
+
+### انتخاب پروفایل و آمار ویندوز
+
+- کلید `vpn-selected-profile` آخرین انتخاب را ذخیره می‌کند؛ در راه‌اندازی شناسهٔ انتخاب‌شده بازگردانی می‌شود و در نبود آن، آخرین پروفایل دارای lastConnected معتبر انتخاب می‌شود. انتخاب جدید کاربر باقی می‌ماند؛ اتصال خودکار هنگام بازشدن اضافه نشده است.
+- guard بارگذاری از نوشتن state اولیهٔ خالی روی localStorage جلوگیری می‌کند. در refresh ساب، شناسه و تاریخچهٔ پروفایل مشابه حفظ می‌شود؛ تطبیق دقیق endpoint/credential اولویت دارد و تغییر اطلاعات یک پروفایل با نام/پروتکل/transport یکتای همان ساب هم پشتیبانی می‌شود. پروفایل فعال در حین اتصال با نسخهٔ refresh جایگزین نمی‌شود.
+- تایمر محلی HomeScreen حذف شد؛ زمان از `stats.connectedTime` سرویس گرفته می‌شود و با خروج/بازگشت صفحه صفر نمی‌شود. آمار در context نگهداری و snapshot سرویس در mount/focus و هر یک ثانیه بازیابی می‌شود. پاسخ قدیمی poll نمی‌تواند رویداد تازه‌تر اتصال را overwrite کند.
+- listener وضعیت هنگام unmount پاک می‌شود؛ وعدهٔ listen که دیر resolve شود هم پس از dispose unlisten می‌شود. claim پاکسازی تمام listenerهای موجود اپ نمی‌شود؛ تغییر اصلی مربوط به state listener است.
+- شمارهٔ session در Rust اضافه شد؛ task آمار/IP و خروج پردازش قدیمی نمی‌تواند وضعیت اتصال تازه را متوقف/بازنویسی کند. وضعیت backend هنگام خروج child نیز disconnected می‌شود تا recovery poll اطلاعات قدیمی را زنده نکند.
+
+### پینگ Android
+
+- اضافه‌کردن پروفایل و ساب تست خودکار را اجرا نمی‌کند. Test all فقط snapshot پروفایل‌های ساب انتخاب‌شده را تست می‌کند؛ ALL همهٔ پروفایل‌ها را تست می‌کند.
+- انتخاب ساب دیگر تست قبلی را لغو و نسل نتایج را باطل می‌کند؛ نتایج دیررس دستهٔ قبلی نباید روی نمایش جدید اعمال شوند. رفتار اتصال فعال همچنان از تونل فعلی برای probe استفاده می‌کند.
+
+### DNS مستقل داخل تونل و مشکل YouTube
+
+- تنظیم جدید Android **Tunnel DNS · V2Ray / Hysteria2** شامل URL معتبر HTTPS DoH و گزینهٔ FakeIP است. URL پیش‌فرض `https://1.1.1.1/dns-query` با detour پروکسی ارسال می‌شود؛ hostname resolver در صورت نیاز bootstrap مستقیم دارد. تنظیم‌ها persist و پس از reconnect اعمال می‌شوند. OpenConnect/SSTP در این نوبت به این تنظیم وصل نشده‌اند.
+- FakeIP به‌صورت پیش‌فرض روشن و cache پایدار قبلی حفظ شده است تا اصلاح قبلی Instagram/Dallas برنگردد. در حالت روشن، مقصدهای معمول A/AAAA توسط FakeIP به دامنهٔ قابل resolve در سمت سرور تبدیل می‌شوند؛ برای مصرف واقعی پاسخ‌های DNS تحریم‌شکن باید FakeIP خاموش شود.
+- مقایسهٔ واقعی wire-format DoH، مستقیم و از طریق پروکسی S1: DNS کاربر برای `www.youtube.com`، `youtubei.googleapis.com` و `music.youtube.com` در هر دو حالت همان **91.107.253.167** واسط را برگرداند. resolver عمومی از داخل همان VPN پاسخ‌های Google داد. این تفاوت یک علت محتمل برای ناسازگاری سرویس‌هاست؛ مشاهدهٔ خودِ اپ YouTube روی گوشی کاربر انجام نشده و رفع قطعی ادعا نمی‌شود.
+- ابتدا با DNS پیش‌فرض مستقل داخل تونل تست شود؛ تنظیم یک DoH/Private DNS در سیستم یا خود اپ دیگری با کنترل resolver تونل یکسان نیست. DNS رمزنگاری‌شده‌ای که اپ دیگری خودش روی 443/853 ارسال کند لزوماً توسط hijack پورت 53 بازنویسی نمی‌شود.
+
+### ماندن Telegram در Connecting
+
+- callback شبکهٔ Android قبلاً هنگام loss به interface ذخیره‌شده/فرضی برمی‌گشت و ممکن بود core را از قطع مسیر مطلع نکند. اکنون network اینترنت‌دار غیر VPN انتخاب می‌شود، handle از دست‌رفته کنار گذاشته و نبود مسیر با index **-1** به core اعلام می‌شود.
+- تغییر network handle یا IPv4 روی همان نام/index interface، ابتدا loss و سپس interface تازه را اعلام می‌کند؛ core فقط مقایسهٔ name/index دارد و بدون این مرحله ممکن بود مسیر قدیمی را حفظ کند. notification تکراری و تغییر صرف metering reset غیرضروری ایجاد نمی‌کند.
+- این اصلاح با تست loss/replacement/deduplication پوشش داده شده، اما آزمایش دو ساعت اتصال و خودِ Telegram روی گوشی واقعی انجام نشده است. اگر علامت ادامه یافت، network transition، لاگ service و زمان رخداد لازم است؛ restart دوره‌ای VPN یا ادعای درمان کامل اضافه نشد.
+
+### شواهد تست و محدودیت‌ها
+
+- Windows: TypeScript typecheck و مجموعهٔ workflowها موفق، از جمله ماندگاری انتخاب، refresh با شناسهٔ ثابت، زمان/traffic پس از unmount/remount Home، کنارگذاشتن poll قدیمی، import/export ECH/Gecko و scope/cancel پینگ. Rust **۲۳ تست پاس و ۵ diagnostic اختیاری ignored**؛ ignored export و latency واقعی جداگانه اجرا و پاس شدند.
+- همهٔ ۲۸ پروفایل با parser واقعی Windows به config هستهٔ pinned `1.14.2-lx.11` تبدیل و latency واقعی تست شدند: **۱۴ مورد جواب داد**. ۱۰ XHTTP سالم فنلاند حدود **۱۲۰–۱۷۴ms**؛ S9 ناموفق. Shadowsocks فنلاند/Seattle و Hysteria2 آلمان/Alabama هم جواب دادند. چند WS/Turkey/Gecko Turkey ناموفق ماندند؛ بیشترشان در screenshot مقایسه هم -1 بودند. نتیجهٔ این شبکه/این زمان است و دلیل قطعی سمت سرور برای همهٔ failureها نیست.
+- Android: **۵۰ تست واحد** موفق؛ **۶ تست instrumentation** روی شبیه‌ساز x86_64 با native libbox موفق، شامل عدم تست خودکار import، scope صحیح دو ساب/ALL، parser/storage/export و native checkConfig با هر دو حالت FakeIP و ECH، cancel/stale result، foreground subscription refresh و diagnostic واقعی.
+- diagnostic Android هر ۲۸ لینک را parse کرد و ۸ نمونه را با هستهٔ واقعی تست کرد: S1=170، S2=166، S4=125، S6=121، S9=-1، S11=170، Hysteria2 DE=118، Hysteria2 Alabama=237 میلی‌ثانیه. فایل خصوصی input از cache تست در finally حذف شد. تست‌های native این نوبت در debug انجام شدند؛ APK release روی گوشی کاربر نصب/آزمایش نشده است.
+- هر ۲۸ config کامل تولیدشدهٔ Windows در بررسی نهایی `sing-box check` پذیرفته شدند؛ اعتبار config با اتصال موفق تمام سرورها یکسان نیست. بررسی whitespace تغییرات Windows نیز موفق بود.
+- build Android `assembleRelease bundleRelease` و Windows NSIS موفق. JDK17/Gradle cache اختصاصی/workaround سوکت مستندشدهٔ قبلی استفاده شد. هسته عوض نشد؛ سازگاری کامل nativeهای OpenConnect/Conscrypt با 16KB همچنان از محدودیت‌های ثبت‌شدهٔ انتشار قبلی است و با تست libbox به‌تنهایی ثابت نمی‌شود.
+- هش نهایی Windows setup: `4dc63dee4f439d151bcce0c975fe5a5e5e62707bed7e9612e56076e23a2e57ac`؛ APK: `cdcc86828d5819ecfe587e80c4f7651d0bd0d90950ed9f03354e48f413ed3b8c`؛ AAB: `5052e9ecede227d6dc70bf44df1d1f99420c7e69aa3fd85532177bf2a7ba819b`.
+
+## Android 1.0.2 / code 3 — بازبینی واقعی DNS، 2026-10-10
+
+- سورس اصلاح‌شده فقط `scratch/SecureVPN-Android-source/` (checkout خصوصی Play) است؛ root `app/` و Windows تغییر نکردند. بسته `com.rahanetmci.securevpn` و versionCode **3** است. این نوبت push، انتشار GitHub یا upload/rollout در Google Play انجام نشده است.
+- علت تأییدشده: ذخیرهٔ DoH فقط URL را تغییر می‌داد و FakeIP پیش‌فرض همچنان A/AAAA معمول را پاسخ می‌داد. تنظیم جدید نیز تا reconnect اعمال نمی‌شد. اکنون Save DNS در یک preference edit، URL معتبر و FakeIP=false را ذخیره می‌کند؛ انتخاب دستی FakeIP همچنان ممکن است. mode ذخیره‌شدهٔ کاربران هنگام شروع اپ بازنویسی نمی‌شود؛ برای تنظیم قبلی یک بار Save DNS لازم است.
+- Save DNS و تغییر FakeIP از مسیر debounce/serialized `ACTION_UPDATE_ROUTING` برای reload تونل فعال sing-box استفاده می‌کنند. اگر اتصال فعالی نباشد، تنظیم در اتصال بعدی مصرف می‌شود. UI حالت واقعی/مصنوعی پاسخ و اثر Save را توضیح می‌دهد؛ لاگ آغاز/reload شامل DNS mode و فقط hostname resolver است، نه query/token. تنظیم روی OpenConnect/SSTP اعمال نشده است.
+- آزمون native Android (libbox روی x86_64 emulator) به‌جای TUN از UDP loopback استفاده کرد، اما DNS/rules/outbounds همان generator تولیدی بودند. ۱۲ query زنده در چهار مرحله FakeIP → custom-real → public-real → custom-reloaded پاس شدند. FakeIP پاسخ 198.18.x داد؛ DNS کاربر برای www.youtube.com، youtubei.googleapis.com و music.youtube.com پاسخ **91.107.253.167** داد؛ 1.1.1.1 پاسخ‌های Google داد و reload دوباره پاسخ DNS کاربر را گرفت. بررسی صرف JSON کافی تلقی نشد.
+- DoT روی 853 با TLS معتبر و SNI، در Windows و Android با framing کامل پاسخ DNS واقعی داد. Private DNS سیستم باید hostname `doh.rahanetmci.com` بگیرد؛ URL کامل فقط برای DoH داخل اپ است. تست‌های A/AAAA/HTTPS (type65) با DoH و DoT پاسخ هماهنگ داشتند: A همان واسط؛ AAAA و type65 خالی و rcode0.
+- HTTPS مقصدهای YouTube و Music از مسیر همان VPN موفق بود (robots.txt=200؛ endpoint API برای GET=405 که خطای اتصال نیست)، ولی دسترسی مستقیم به همان واسط روی این اینترنت **Connection reset** داد. این شاهد مشکل مسیر مستقیم است، نه اثبات خرابی resolver یا شناسایی قطعی عامل reset. خود اپ‌های YouTube/Music و پخش ویدیو روی گوشی کاربر هنوز تست نشده‌اند؛ رفع کامل آن‌ها ادعا نمی‌شود. ترافیک DoH/DoT مستقل اپ‌های دیگر از این تنظیم قابل بازنویسی نیست.
+- چالش diagnostic: نوشتن header دو بایتی DoT به‌صورت دو write تک‌بایتی باعث EOF شد؛ در Python هم single-byte framing پاسخ صفر داد، اما frame کامل یا header دو بایتی پاسخ گرفت. تست Android مطابق resolver AOSP کل frame را در یک write فرستاد و پاس شد. این تفاوت framing به‌تنهایی علت خرابی Private DNS واقعی Android نیست، چون resolver سیستم frame کامل می‌فرستد. لینک مرجع: https://android.googlesource.com/platform/system/netd/+/refs/heads/android10-dev/resolv/DnsTlsSocket.cpp .
+- اعتبارسنجی: **50 تست JVM** بدون failure/error؛ **۵ تست متمایز instrumentation** موفق (mode ذخیره/بازسازی، native DNS/reload، parser/storage/share، scope پینگ و native checkConfig). diagnostic نهایی پس از اصلاح framing دوباره پاس شد. fixture خصوصی در finally از cache تست حذف شد و در artifactها نیست. `assembleRelease bundleRelease`، lintVital، apksigner verify و jarsigner verify موفق؛ APK manifest نسخه/بستهٔ درست را تأیید کرد. trailing whitespace/CRLF قدیمی checkout خصوصی همچنان وجود دارد و کل سورس برای این کار normalize نشد.
+- خروجی: `SecureVPN-Updates-2026-10-10-DNS-1.0.2/` شامل APK امضاشده با upload key، AAB، README، SHA256 و DNS-test-results عمومی است. برای نصب Play باید AAB در همان track بارگذاری شود؛ امضای APK upload ممکن است با app-signing Play متفاوت باشد و upgrade مستقیم تضمین نمی‌شود. هیچ کلید/توکن/کانفیگ آماده وارد فایل انتشار نشده است.
+- APK SHA256 `156357d45f9d07da9e7fc3e563855cc3dca3330e7c0831a77b7f64458e095c5f`؛ AAB SHA256 `00a0c6104500d5bca5786f3f4d21d1194c732b90f8324209e6f607c8e45c1888`.
+
+## Android 1.0.3 / code 4 — اصلاح مسیر واقعی DNS تحریم‌شکن، 2026-10-10
+
+- درخواست کاربر: YouTube داخل سرویس FR و Gemini فرانسه نشان می‌دادند، نه صرفاً IP عمومی VPN. تست DNS نسخهٔ 1.0.2 فقط دریافت جواب resolver را اثبات می‌کرد؛ در این مرحله مقصد واقعی اتصال و پاسخ کشور YouTube نیز بررسی شدند.
+- علت اول: IP سرور فرانسه **91.107.253.167** با IP واسط تحریم‌شکن DNS برای Google/YouTube یکسان بود. generator برای IP/domain سرور VPN rule مستقیم می‌ساخت و HTTPS کاربر به همین IP ناخواسته direct می‌شد. تست A/B با هستهٔ دقیق v1.14.2-lx.11 و همان کانفیگ: bypass روشن → TLS reset؛ bypass حذف‌شده → HTTPS موفق. IP عمومی خود VPN در دو حالت یکسان باقی ماند.
+- راه‌حل: حذف bypass مخصوص IP/domain سرور از **route ترافیک مشتری**. سوکت‌های خود هسته همچنان از `autoDetectInterfaceControl` و `VpnService.protect` استفاده می‌کنند. ruleهای موجود bootstrap DNS و Iran/LAN/custom bypass حفظ شدند. حذف bypass با VPN واقعی Android نیز تأیید شد؛ socket protection برابر true و تونل عملیاتی بود.
+- علت دوم: FakeIP پایدارِ قبل از خاموش‌کردن آن همچنان در برنامه‌ها cache می‌شد؛ هسته 198.18.x را به domain بازمی‌گرداند و server فرانسوی مجدداً resolve می‌کرد. app-probe دامنه‌ای نیز قبل از resolve مستقیم به proxy route می‌رفت. اکنون در mode پاسخ واقعی، action `resolve` با ipv4_only بعد از sniff/DNS hijack و قبل از app-probe اجرا می‌شود. server صریح در resolve تعیین نشده تا DNS rules مربوط به Iran/ECH و resolver انتخابی رعایت شوند. FakeIP روشن همچنان رفتار قبلی دارد.
+- شواهد روی **libbox واقعی اندروید**: اتصال France با FakeIP به YouTube پاسخ HTTP200 و client.gl=FR داد؛ پس از reload، real-IP، **همان FakeIP کش‌شده**، domain request و authenticated app-probe همگی HTTP200 و client.gl=US دادند. لاگ VLESS مقصد 91.107.253.167:443 را ثبت کرد و هیچ direct به آن دیده نشد. Gemini همان مقصد و HTTP200 داشت، ولی کشور UI حساب لاگین‌شده Gemini بررسی نشده و US آن ادعا نمی‌شود.
+- تست نهایی **VpnConnectionService + TUN واقعی** روی emulator: system network DNS پاسخ 91.107.253.167، TLS/SNI با بررسی گواهی، YouTube HTTP200 و client.gl=US؛ core sockets protected=true و disconnect رابط VPN را برداشت. این تست صرفاً SOCKS/JSON نبود. خود اپ YouTube/Music و پخش ویدیوی گوشی فیزیکی هنوز تست نشده‌اند.
+- اعتبارسنجی: **50 تست JVM** بدون خطا و **۷ تست متمایز instrumentation** موفق، شامل native DNS/reload، native destination/cached FakeIP/probe، سرویس واقعی/TUN، ذخیره mode، parser/storage/share، scope پینگ و checkConfig هر دو mode. regression assertion ترتیب resolve/probe و نبود server-IP bypass اضافه شد. fixtureها فقط opt-in داخل cache debug بودند و finally آن‌ها را حذف کرد؛ تنظیمات تست نیز restore شدند.
+- فایل انتشار: بستهٔ `com.rahanetmci.securevpn` نسخهٔ **1.0.3 / versionCode 4**. سورس مرجع فقط `scratch/SecureVPN-Android-source/`؛ Windows و root app تغییر نکردند. Release APK+AAB، lintVital، apksigner و jarsigner verify موفق. packageReleaseBundle ابتدا با heap 2GiB دچار OOM شد؛ retry با heap4GiB و max-workers=1 موفق بود، بدون تغییر دائمی gradle.properties.
+- خروجی `SecureVPN-Updates-2026-10-10-DNS-1.0.3/`: APK upload-signed، AAB، README، SHA256 و DNS-destination-test-results عمومی. برای نصب فعلی Play از AAB در همان track استفاده شود؛ APK ممکن است با app-signing Play هم‌امضا نباشد. این نوبت push/آپلود/rollout انجام نشده است. پروفایل آماده و اطلاعات ورود در artifacts نیستند.
+- APK SHA256 `af714f28fed643a2bd02cfe82edd0f08f36cb353391f6102309ef12dbd0e53f6`؛ AAB SHA256 `74d0776016d0d040d9c650464b092ab5cfc6462b80ebb984e0d59ba7f1d026cf`.
+
+## Android follow-up backlog — AAB 1.0.3 Play review
+
+- Play Console reports that the 1.0.3 app bundle does not support 16 KB memory page sizes. Assess the native sing-box/libbox and other packaged native libraries, upgrade/rebuild compatible dependencies, and verify all four ABIs before a future release.
+- Play Console reports medium DEX code optimization (48% optimization/shrinking/obfuscation). Review the Android Gradle Plugin/R8 configuration and current toolchain; measure the resulting bundle and startup/runtime behavior before changing release settings.
+- Screenshot review showed AAB version 4 (1.0.3) uploaded for Closed testing. The Previous release section says no bundles are included; that is expected when publishing this new bundle alone. Do not add the old 1.0.0 bundle to this update unless intentionally rolling that version forward.
+- Play Console warns that the native-code AAB has no debug symbols. For a future release, generate the matching native debug-symbol archive for this exact build and upload it to the release so native crashes and ANRs can be symbolicated. Keep symbols private and match them to the uploaded version code/build.
+
+## Android 1.1.0 / code 5 — 2026-10-15 — paused at user request
+
+- پیاده‌سازی این مرحله در checkout خصوصی `scratch/SecureVPN-Android-source/` است؛ Windows و root app تغییر نکردند. تغییرات: به‌روزرسانی Fragment و Conscrypt، بازسازی nativeهای libbox/graphics-path با NDK r30 برای 16KB، مهاجرت OpenConnect داخلی به endpoint هسته، اشتراک LAN با HTTP/SOCKS احراز هویت، نمایش IP محلی پیش از اتصال، تاریخچهٔ مصرف SQLite، راه‌اندازی Kill Switch سیستم و تقویت بازیابی notification.
+- ایراد کش جداگانهٔ SharedPreferences در UI و فرایند VPN نیز شناسایی و با snapshot صریح تنظیمات DNS/LAN در Intent رفع شد.
+- ساخت release APK/AAB و بررسی امضا/zipalign موفق؛ ممیزی نهایی LOAD و RELRO تمام nativeهای ۶۴بیتی موفق. ۵۲ تست JVM و ۸ تست instrumentation روی شبیه‌ساز واقعی 16KB پاس شدند؛ شامل OpenConnect، HTTP/SOCKS، مصرف، notification و DNS واقعی TUN.
+- آزمایش چندساعتهٔ notification روی گوشی، کلاینت فیزیکی دوم LAN و رفتار واقعی lockdown/reboot هنوز انجام نشده‌اند. Kill Switch نیازمند فعال‌کردن Always-on VPN و Block connections without VPN در تنظیمات Android است.
+- کار به درخواست صریح کاربر متوقف شد. بسته‌بندی نهایی تحویل، تکمیل مستندات بازسازی native و متن privacy مربوط به امکانات جدید باقی مانده‌اند. هیچ push یا انتشار عمومی انجام نشد. مسیرها و ادامهٔ دقیق در `H:/Antigravity Projects/VPN APP/Android-1.1.0-Resume.md` ثبت شده است.
+## Android 1.1.0 / versionCode 5 — تکمیل بستهٔ تحویل، 2026-10-15
+
+### سازگاری Google Play و 16KB
+
+- سورس مرجع فقط `scratch/SecureVPN-Android-source/`، بسته `com.rahanetmci.securevpn` است. این مرحله Android است؛ Windows و root `app/` تغییر نکردند. تغییرات قبلیِ commit‌نشدهٔ checkout خصوصی حفظ شدند.
+- `androidx.fragment:fragment-ktx` به **1.9.1** و Conscrypt به **2.7.0** ارتقا یافتند. فقط تغییر نسخهٔ Fragment هشدار native را حل نمی‌کرد: libbox قبلی LOAD=16KB داشت ولی انتهای GNU_RELRO هم‌تراز نبود؛ OpenConnect/stoken و Conscrypt قدیمی نیز کتابخانهٔ قدیمی داشتند.
+- libbox از همان source tag **v1.14.2-lx.11**، با چهار submodule در commitهای دقیق، **Go 1.26.8** و **NDK r30 / 30.0.16248370** برای چهار ABI و API26 بازسازی شد. فلگ‌های `-R 16384`، `-z max-page-size=16384` و `-z common-page-size=16384` در ساخت استفاده شدند؛ ELF header دستکاری نشد. نسخهٔ هسته `1.14.2-lx.11-securevpn.16k` است. باینری جدیدتر upstream برای مقایسه بررسی شد ولی جایگزین نشده است.
+- AndroidX graphics-path **1.1.0** upstream نیز انتهای RELRO نامناسب داشت. C++ دست‌نخورده از commit رسمی **1c44f0be720ff16cd30357ad2375239bf97a1da8** با NDK جدید بازسازی شد؛ Java/resources AAR رسمی حفظ شدند. dependency قبلی از Gradle exclude شد تا native تکراری بسته‌بندی نشود.
+- `app/libs/*-provenance.json` شامل source/toolchain/flags/hash و submodule pins است. راهنمای **NATIVE_16KB_BUILD.md** و سه اسکریپت build-libbox-16kb.ps1، package-native-aar.py و build-graphics-16kb.py به سورس اضافه شدند. دو اسکریپت بسته‌بندی/graphics روی کپی موقت اجرا و موفق شدند؛ libbox بازبسته‌بندی‌شده تمام entryهای یکسان با AAR تحویلی داشت. مرتب‌سازی ورودی C++ در اسکریپت graphics می‌تواند hash باینری بازسازی‌شده را عوض کند؛ artifact تحویلی و symbols همین artifact حفظ شدند، نه خروجی آزمایشیِ بازسازی دوم.
+- تگ‌های بدون استفادهٔ Naive/Tailscale/WireGuard/OpenVPN از ساخت core حذف شدند؛ پروتکل‌های مورد استفادهٔ اپ حفظ شدند. libbox AAR از **120038794** به **91185366** بایت رسید. `useLegacyPackaging=true` عمداً حفظ شد تا universal APK به‌دلیل nativeهای uncompressed بسیار بزرگ نشود؛ نصب کتابخانه‌های فشرده را استخراج می‌کند و ELF آن‌ها هم‌تراز است.
+- JNI قدیمی `libopenconnect.so` و `libstoken.so` چهار معماری حذف شد. حالت nativeِ OpenConnect اکنون endpoint داخلی core را به‌کار می‌گیرد؛ Java fallback باقی است. MTU، DTLS، TCP buffer و no-delay به مسیر جدید منتقل شدند. درخواست واقعی TLS از داخل VPN و مصرف آن تست شد.
+- چالش ساخت: CGO مسیر NDK دارای space را اشتباه tokenize می‌کرد؛ اسکریپت Windows از short path استفاده می‌کند. archive سورس upstream فاقد محتوای submoduleها بود؛ commitهای pinned جداگانه دریافت شدند. Espresso قدیمی روی API37 به reflection ورودی ناسازگار برخورد کرد؛ test dependencies به JUnit1.3.0 و Espresso3.7.0 ارتقا یافتند. اولین build آفلاین به artifact کش‌نشدهٔ Compose release برخورد کرد؛ retry آنلاین موفق شد، بدون تغییر BOM فقط برای این cache miss.
+
+### امکانات شبکه، تاریخچه و اعلان
+
+- **Share VPN over LAN** در Settings → Network & usage اضافه شد: پراکسی TCP نوع HTTP/HTTPS CONNECT و SOCKS5 با پورت قابل تغییر 1024–65535، نام کاربری و رمز تصادفی هر نصب. پیش‌فرض خاموش و پورت 10808 است؛ source غیرخصوصی/بدون احراز هویت رد می‌شود، ۱۶ client همزمان و timeout محدود دارد. DNS/socket خروجی به Network واقعی VPN bind می‌شوند؛ fallback مستقیم وجود ندارد. تغییر port/enable روی اتصال جاری اعمال می‌شود و قطع VPN listener/socketها را می‌بندد. این قابلیت پراکسی است، نه مسیریابی شفاف hotspot یا UDP؛ دستگاه مقابل باید proxy و auth را تنظیم کند.
+- **Local IP · before VPN** آدرس IPv4 رابط فیزیکی Wi-Fi/Ethernet/دیتا را پیش از اتصال می‌خواند و از IP مجازی تونل و Origin IP عمومی جدا نمایش می‌دهد. ممکن است بیش از یک رابط فیزیکی دیده شود؛ IP دلخواه پیش از NAT اپراتور حدس زده نمی‌شود.
+- **History of Usage** با SQLite/WAL اضافه شد: Today، هفت روز، سی روز، بازهٔ YYYY-MM-DD و گروه‌بندی هفتگی. روزها طبق timezone گوشی هستند؛ sample عبوری از نیمه‌شب بین روزها تقسیم می‌شود. cursor هر session از ثبت دوباره یا کاهشی sample قدیمی جلوگیری می‌کند. service هر ۵ ثانیه و پیش از قطع، مصرف VPN را ذخیره می‌کند؛ UI مستقل از صفحهٔ Home است. crash/force-stop می‌تواند آخرین نمونهٔ پنج‌ثانیه‌ای را از دست بدهد و صورتحساب اپراتور ممکن است overhead متفاوت داشته باشد.
+- شمارش core از CommandClient status واقعی و totals تونل می‌آید، نه کل ترافیک گوشی. reload totals را تجمیع و callback نسل قدیمی را کنار می‌گذارد. سابقهٔ مصرف و credential پراکسی در cloud backup قرار نمی‌گیرند؛ history محلی است و به backend ارسال نمی‌شود.
+- **Kill Switch** به سازوکار واقعی Android متکی است: راهنما، وضعیت سیستم و دکمهٔ رفتن به VPN settings اضافه شد. کاربر باید خودِ Always-on VPN و Block connections without VPN را روشن کند؛ برنامه حق تغییر پنهانی این دو گزینه را ندارد. با قطع VPN، Android اینترنت مستقیم را مسدود می‌کند؛ برنامه‌های excluded هم ممکن است قطع شوند. آخرین اتصال در noBackup با AtomicFile نگهداری می‌شود تا start سیستم آن را بازیابی کند؛ profile حذف‌شده بازیابی نمی‌شود.
+- خطای cross-process تأییدشده: UI و فرایند `:vpn` cache مجزای SharedPreferences دارند؛ DNS/LAN ذخیره‌شده در UI می‌توانست در service قدیمی بماند. snapshot صریح DNS و LAN همراه Intent داخلی به service ارسال می‌شود؛ restore آخرین اتصال هم DNS/LAN/MTU جاری را می‌گیرد. این اصلاح با TUN واقعی و hot-toggle LAN پاس شد.
+- اعلان foreground اکنون ongoing، no-auto-cancel و immediate است؛ monitor دوره‌ای از خطا جان سالم می‌برد و اعلان گم‌شده/فاقد foreground را با startForeground دوباره ثبت می‌کند. onTaskRemoved و deleteIntent session guard حفظ شدند؛ مسیر تنظیمات notification/battery اضافه شد. ممنوع‌بودن notification یا kill خود سیستم را دور نمی‌زند و ماندگاری چندساعته روی OEMهای مختلف هنوز تأیید نشده است.
+- متن privacy محلی انگلیسی/فارسی برای history و LAN به‌روزرسانی و در پوشهٔ تحویل کپی شد؛ **سایت عمومی در این مرحله deploy نشده است**. پیش از rollout عمومی متن سایت هم به‌روز شود.
+
+### اعتبارسنجی و فایل‌های نهایی
+
+- **۵۲ تست JVM بدون failure/error** و **۹ تست instrumentation** پاس شدند. هشت تست شبکه/UI/DB/DNS قبلی روی شبیه‌ساز واقعی x86_64 با page size **16384** اجرا شدند. تست نهم در ادامهٔ کار روی همان تصویر 16KB، save/restore، رد profile حذف‌شده و مصرف DNS/LAN/MTU جدید را تأیید کرد. داده‌های profile/preferences/AtomicFile در پایان تست restore شدند؛ fixtureهای خصوصی تست اتصال finally حذف شدند و در APK/AAB نیستند.
+- شواهد اتصال: OpenConnect واقعی، Conscrypt TLS، HTTP CONNECT و SOCKS authenticated هر دو HTTP200؛ anonymous رد شد؛ LAN بدون قطع VPN خاموش/روشن شد و پس از disconnect بسته شد؛ **19526 بایت** مصرف واقعی در DB ثبت شد؛ ongoing notification حاضر بود. مسیر DNS در VpnConnectionService/TUN واقعی پاسخ **91.107.253.167** گرفت و YouTube HTTP200 / client.gl=US داد. این شواهد مربوط به همین شبکه/زمان تست است.
+- ممیزی نهایی release APK و AAB: **همهٔ nativeهای ۶۴بیتی LOAD و انتهای GNU_RELRO مناسب 16KB دارند**. چهار ABI بسته‌بندی شده‌اند؛ runtime روی x86_64 بود، نه گوشی ARM64. امضای APK با apksigner، AAB با jarsigner و zipalign -P16 موفق بودند. warning self-signed upload certificate طبیعی است. `assembleRelease bundleRelease` و lintVital موفق؛ build با heap4GiB و max-workers=1 انجام شد.
+- رفتار واقعی Android lockdown/reboot، کلاینت فیزیکی دوم LAN و notification چندساعته روی گوشی هنوز تست نشده‌اند. تست LastVpnConnection اثبات OS lockdown نیست. تحلیل نهایی bundle در Play نیز بعد از آپلود انجام می‌شود؛ رفع ظاهری تمام هشدارهای کنسول پیشاپیش ادعا نمی‌شود.
+- خروجی **SecureVPN-Updates-2026-10-15-1.1.0/** شامل APK upload-signed، AAB، symbols موجود libbox/graphics-path، R8 mapping، SHA256، گزارش native، نتایج تست عمومی، release notes و راهنما است. symbols full DWARF/Conscrypt کامل نیست و باید خصوصی و مربوط به همین build نگهداری شود.
+- APK: **103350580 bytes**، SHA256 `cd200700676d75046aa1289cd0bdc3ea29dd5a3ca04b39b5294a54de18dc52ee`.
+- AAB: **108282723 bytes**، SHA256 `9178fd56918ac7f27963f4bc20553cfcb06734398663b7d1fad5ba2adc9564e4`.
+- Symbols SHA256 `7dc1e1d363f6d4cca03e4b1ed0b075c03d0f03171a9181ebda1552bbe8c44e44`.
+- APK با upload key امضا شده است؛ ممکن است با app-signing نسخهٔ Play یکسان نباشد. برای update نصب Play باید AAB در همان track استفاده شود؛ حذف داده‌های کاربر برای عبور از اختلاف امضا پیشنهاد نشد. هیچ push، upload یا rollout عمومی این نوبت انجام نشد.
+- تکمیل بررسی تحویل: build ID هر ۸ فایل symbols با native متناظر در release APK تطبیق داده شد. instrumentation با APK debug انجام شد؛ نصب release روی گوشی کاربر هنوز انجام نشده است.
+
+## Android backlog — 2026-10-15 — user testing 1.1.0
+
+- User canceled obtaining a Play-signed APK for now and will test the existing build and report results. Do not continue Play Console upload/download work unless requested again.
+- Requested future feature: **Sort by Ping** for Android connection/profile lists. Record as backlog only; not implemented in 1.1.0.
+## Android 1.1.1 / code 6 — 2026-10-15 — paused before runtime verification
+
+- درخواست: رفع ایمپورت ساب با clipboard/QR، مرتب‌سازی ترتیب سرور/نام/پینگ و پینگ چهار‌تایی. پیاده‌سازی و ساخت APK/AAB و ابزار تست release موفق شد؛ ۵۷ تست JVM بدون خطا پاس شدند.
+- وضعیت/خطای قابل مشاهده برای import، جلوگیری از ساب خالی، normalization لینک کپی‌شده، sort ذخیره‌شونده و activeIds برای پینگ موازی اضافه شدند. هسته‌های تست پینگ listener مشترک command.sock باز نمی‌کنند؛ صحت اجرای موازی native هنوز باید تست شود.
+- پاسخ لینک کاربر در Windows شامل ۲۶ پروفایل بود؛ علت مشکل گوشی هنوز قطعی نیست و تست clipboard/QR روی release نهایی هنوز اجرا نشده است. دستور نصب/تست pending با درخواست توقف کاربر توسط بررسی خودکار رد شد و اجرا نشد.
+- کار به درخواست صریح کاربر متوقف شد. شبیه‌ساز مستقل همین کار بسته شد؛ دو شبیه‌ساز قبلی تغییر نکردند. ادامهٔ دقیق در `Android-1.1.1-Resume.md` است. نسخهٔ 1.1.1 هنوز بسته‌بندی/تحویل یا منتشر نشده است.
+
+## Android 1.1.1 / code 6 — 2026-10-15 — completed after user resumed
+
+این بخش وضعیت «paused before runtime verification» قبلی را تکمیل می‌کند. تغییرات فقط در سورس معتبر `scratch/SecureVPN-Android-source/` انجام شدند؛ Windows و Android قدیمی ریشه تغییر نکردند. هیچ push، آپلود Play یا deploy سایت در این مرحله انجام نشد.
+
+### ایمپورت، مرتب‌سازی و پینگ
+
+- Clipboard و QR یک مسیر مشترک دارند. `LinkImportInput` wrapperهای Markdown/angle/backtick و BOM/bidi اطراف لینک را حذف می‌کند، بدون تغییر token، حروف یا escapeهای URL. فهرست خام URI پیش از تلاش برای Base64 پردازش می‌شود.
+- دریافت ساب اکنون loading، cancel، تعداد واردشده و خطای قابل مشاهده دارد. خطاهای HTTP/TLS/DNS/timeout، پاسخ HTML/خالی و نبود پروتکل پشتیبانی‌شده پیام روشن می‌دهند؛ ساب خالی ذخیره نمی‌شود. HTTPS و اعتبارسنجی redirect حفظ شدند؛ سقف ۵ redirect و 4MB پاسخ است. token در پیام خطا و log منتشر نمی‌شود. `fetchSubscription` قدیمی برای سازگاری باقی است و مسیر جدید از `fetchSubscriptionOrThrow` استفاده می‌کند.
+- network IO از تغییر state روی Main جدا شد. generation guard مانع می‌شود پایان یا خطای import لغوشده، وضعیت import بعدی را پاک کند. refresh ناموفق پروفایل‌های ذخیره‌شده را حفظ می‌کند. افزودن ساب/پروفایل خودکار پینگ نمی‌گیرد.
+- `ProfileSort.DEFAULT / NAME / PING` در منوی کنار Ping اضافه و انتخاب در preferences ذخیره شد. ترتیب پیش‌فرض همان ترتیب canonical سرورهای ساب است؛ sort نمایشی دادهٔ provider را بازنویسی نمی‌کند. نام بدون حساسیت به بزرگی حروف مرتب می‌شود؛ پینگ ناموفق/اندازه‌گیری‌نشده آخر فهرست است و tieها پایدار می‌مانند.
+- batch پینگ حداکثر **۴ worker** دارد و فقط snapshot ساب انتخاب‌شده را می‌سنجد؛ نتیجهٔ قبلی همان مجموعه پاک و indicator برای `activeIds` نشان داده می‌شود. نتیجهٔ نسل یا config قدیمی اعمال نمی‌شود.
+- `SingBoxDelayTester` برای هر probe هسته و پورت loopback مستقل دارد؛ setup یک‌بار و synchronized است. command gRPC listener مشترک (`server.start()` / command.sock) در probe راه‌اندازی نمی‌شود؛ `startOrReloadService` مستقیم استفاده می‌شود تا تست‌ها روی socket یکدیگر اثر نگذارند. fallback پورت ثابت حذف شد.
+
+### اصلاح گزارش IP محلی و علامت خراب در تصویر کاربر
+
+- قبلاً تمام رابط‌های فیزیکی جمع می‌شدند و رابط جانبی اپراتور (IMS/MMS و مشابه) می‌توانست قبل از اینترنت اصلی نمایش داده شود. `LocalAddressSelection` اکنون VPN و شبکهٔ فاقد INTERNET را کنار می‌گذارد؛ اولویت با active physical network، سپس شبکهٔ فیزیکی tracked، سپس Internet معتبر است. فقط **یک IPv4** نشان داده می‌شود؛ انتخاب بر اساس موقعیت در فهرست یا RFC1918 نیست، پس IP اختصاص‌یافتهٔ اپراتور مثل 25.x هم پذیرفته می‌شود.
+- `LocalNetworkInfo.addresses(..., preferredNetwork)` از API عمومی ConnectivityManager استفاده می‌کند. شبکهٔ اصلی tracked در ViewModel هنگام VPN به انتخاب کمک می‌کند. API underlyingNetworks در SDK عمومی موجود نبود و از آن استفاده نشد. مسیر `lanOnly` برای پراکسی LAN همچنان آدرس‌های Wi-Fi/Ethernet را جداگانه برمی‌گرداند.
+- متن به `Local IP (before VPN):` تغییر کرد و جداکنندهٔ دارای replacement character «�» حذف شد. این علامت اطلاعات شبکه یا خطا نبود، کاراکتر خراب متن بود. تنها فایل‌های ویرایش‌شدهٔ دارای encoding مخلوط اصلاح شدند، نه کل repository.
+
+### شواهد تست، چالش‌ها و محدودیت‌ها
+
+- **۶۰ تست JVM** بدون failure/error و **۸ تست instrumentation** پاس شدند. موارد شامل خطا/ساب خالی، race لغو import، persist sort، حداکثر ۴ probe در batch و حفظ پینگ ساب دیگر، عدم پینگ خودکار، ECH/Gecko و پذیرش DNS در core هستند. تست انتخاب IP، رابط جانبی اول و اینترنت اصلی دوم، حذف VPN و اولویت شبکهٔ tracked را پوشش می‌دهد.
+- تست شبکهٔ واقعی، ساب خصوصی کاربر را با **۲۶ پروفایل** دریافت کرد؛ QR تولید/decode و مسیر مشترک importer پاس شد. سه probe واقعی native هم‌زمان نتیجه‌های **134 / 227 / 739 ms** دادند؛ این اعداد فقط مربوط به زمان/شبکهٔ تست هستند.
+- روی **APK minified/upload-signed واقعی**، instrumentation مستقل مبتنی بر Android framework مسیر Add → Clipboard → Import را اجرا کرد: نسخهٔ قدیمی 1.1.0 و جدید 1.1.1 هر دو ۲۶ پروفایل وارد کردند. در 1.1.1 هر سه انتخاب sort و ذخیره‌شدنشان تأیید شد؛ در پایان profile/preferences قبلی restore شدند. **علت اولیهٔ شکست ایمپورت گوشی بازتولید و قطعی نشد**؛ نمی‌توان صرف موفقیت شبیه‌ساز را اثبات رفع آن علت دانست. در صورت تکرار، پیام خطای جدید گوشی مبنای بررسی است. اسکن با دوربین فیزیکی تست نشده است.
+- JUnit با دسترسی مستقیم به APIهای داخلی روی APK کوچک‌شدهٔ R8 قابل اجرا نبود (Trace/Companion/constructor حذف یا inline شده بودند). تست واقعی release با runner framework-only انجام شد؛ تست API داخلی با debug همان سورس/native انجام شد. runner ناموفق DirectRelease حذف شد؛ keep rule اضافی برای API تست به production تحمیل نشد. property اختیاری `debugUploadSigning=true` فقط برای نصب debug روی شبیه‌ساز اختصاصی با همان امضا، بدون پاک‌کردن داده، اضافه شد؛ پیش‌فرض debug تغییر نکرد.
+- اولین fixture پینگ انتظار داشت latency ذخیره‌شده بعد از init باقی بماند، در حالی که VM آن را پاک می‌کند؛ fixture اصلاح شد تا اول پینگ ساب دیگر را واقعاً ایجاد و سپس batch ساب انتخاب‌شده را بسنجد. rerun نهایی ۸/۸ پاس شد؛ این failure، باگ production نبود.
+- تست‌ها روی شبیه‌ساز مستقل x86_64 با **page size 16384** انجام شدند؛ update درجا از APK 1.1.0 به 1.1.1 با همان upload certificate موفق شد. در APK ریلیز نهایی صفحهٔ Home نیز یک IP و متن سالم دیده شد. تست چندساعتهٔ اعلان/OEM، camera و شبکهٔ اپراتور واقعی هنوز نیاز به تست گوشی دارند. دو شبیه‌ساز قبلی کاربر دست‌نخورده ماندند؛ فقط شبیه‌ساز اختصاصی همین کار پس از اتمام بسته شد.
+- build `testDebugUnitTest assembleRelease bundleRelease assembleReleaseAndroidTest` موفق بود. APK با apksigner و zipalign -P16 و AAB با jarsigner تأیید شد. تمام nativeهای بستهٔ جدید byte-identical با 1.1.0 هستند؛ symbols همان build قابل استفاده است، ولی **R8 mapping جدید** مخصوص 1.1.1 بسته‌بندی شد. ممیزی APK/AAB، LOAD و GNU_RELRO همهٔ nativeهای ۶۴بیتی را مناسب 16KB تأیید کرد؛ تحلیل نهایی Play جای خود را دارد.
+
+### تحویل
+
+- پوشهٔ `SecureVPN-Updates-2026-10-15-1.1.1/`: APK release upload-signed، AAB code6، native symbols، R8 mapping، SHA256، گزارش native، نتایج sanitized، notes و README. هیچ config آماده، token خصوصی یا signing key در خروجی قرار نگرفته است. نسخهٔ 1.1.0 قبلی بازنویسی نشد.
+- APK: **103356040 bytes**؛ SHA256 `8e37eba620042427a61e359b82faff7399171b2a65156e1d8748113f44dab648`.
+- AAB: **108300540 bytes**؛ SHA256 `03aaddf8acceb924676d7e3a56ec8ebd43d408a795102ece6a23cb0d2c5c7137`.
+- نصب مستقیم روی APK قبلی با همین upload key انجام می‌شود. امضای نصب Google Play ممکن است متفاوت باشد؛ برای آن از AAB در track موجود Play استفاده شود، نه حذف دادهٔ کاربر. workflow قبلی دریافت APK امضاشدهٔ Play که کاربر لغو کرد، از سر گرفته نشد.
+- متن privacy محلی 1.1.0 در تحویل جدید هم موجود است؛ انتشار متن روی سایت که از مرحلهٔ قبلی مانده، همچنان انجام نشده است.
+
+
+## Android 1.1.2 / code 7 — 2026-10-16 — real parallel ping, Stop and usage shortcuts
+
+- درخواست کاربر: پینگ هنوز عملاً تک‌تک است؛ با لمس شمارنده بتوان تست را متوقف کرد؛ History of Usage از Home قابل دسترسی باشد و Yesterday داشته باشد. فقط سورس معتبر Android در `scratch/SecureVPN-Android-source/` تغییر کرد؛ Windows و Android قدیمی ریشه دست‌نخورده‌اند. خروجی جدید در `SecureVPN-Updates-2026-10-16-1.1.2/` است؛ نسخه‌های قبلی بازنویسی نشدند.
+
+### علت قطعی کندی و اصلاح آن
+
+- تست جدید برخلاف تست قبلی فقط موفقیت چند نتیجه را نمی‌سنجد: یک peer محلی عمداً بی‌پاسخ، هشت handshake واقعی VMess رمزنگاری‌شده را نگه می‌دارد تا هم‌پوشانی آن‌ها اثبات شود. قبل از اصلاح فقط یک اتصال جلو می‌رفت و هفت worker در `CommandServer.startOrReloadService` متوقف بودند؛ پس موازی‌بودن coroutine به‌تنهایی کافی نبود. سه نتیجهٔ موفق تست 1.1.1 اثبات هم‌پوشانی native نبودند.
+- بررسی سورس همان core نشان داد `box.go` در صورت وجود `PlatformLogWriter`، cache-file را حتی بدون فعال‌سازی صریح ایجاد می‌کند. `CommandServer` آن writer را دارد؛ همهٔ probeها فایل پیش‌فرض **cache.db** در working directory مشترک را باز می‌کردند و قفل انحصاری **bbolt** آن‌ها را سری می‌کرد. پورت جدا و حذف command.sock این قفل دوم را رفع نکرده بود.
+- `SingBoxDelayTester` اکنون در config هر probe، `experimental.cache_file.path` مستقل با UUID در cache خصوصی می‌گذارد و پس از بستن core آن فایل را حذف می‌کند. پورت و core مستقل قبلی حفظ شدند؛ semaphoreهای VM/native با یک ثابت مشترک به **۸** افزایش یافتند. فایل native/هسته بازسازی نشد؛ اصلاح در config Kotlin است.
+- در تست نهایی **هر هشت handshake هم‌زمان** به peer رسیدند؛ Stop تمام socketها را بست و cleanup حدود **۲۰ میلی‌ثانیه** طول کشید. این اندازه‌گیری مربوط به شبیه‌ساز و peer محلی است، تضمین سرعت گوشی/اینترنت کاربر نیست. عدم باقی‌ماندن فایل‌های probe-cache نیز assert شد.
+
+### Stop واقعی و رابط کاربری
+
+- شمارنده در حالت تست دیگر disabled نیست؛ لمس آن `stopLatencyTests()` را فراخوانی می‌کند و مربع Stop کنار عدد نمایش داده می‌شود. زیر toolbar تعداد فعال‌های موازی و راهنمای لمس شمارنده آمده است. نتیجه‌های تکمیل‌شده حفظ می‌شوند، کار صف‌شده شروع نمی‌شود و مقدارهای نسل لغوشده بعداً اعمال نمی‌شوند؛ تست جدید را می‌توان دوباره شروع کرد. scope ساب انتخاب‌شده و پاک‌شدن نتایج قبلی در شروع تست حفظ شدند. هنگام اتصال VPN، فقط profile فعال تست می‌شود.
+- توقف، batch job و ping job را لغو و generation را عوض می‌کند. `CancellableProbe` یک watcher قابل لغو دارد که منابع native/socket/HTTP را روی IO می‌بندد، حتی وقتی worker در `responseCode`/TLS/read بلوکه است. ثبت منابع پس از cancel هم فوراً close می‌شود و خطای cleanup یک منبع، cleanup بقیه را متوقف نمی‌کند. core/raw socket پیش از wrapperهای HTTP بسته می‌شود تا read آزاد شود. هر دو درخواست warm-up/RTT بالاخره disconnect می‌شوند؛ TLS probeهای OpenConnect/SSTP هم socket قابل بستن دارند.
+- بودجهٔ coroutine هر probe **۱۰ ثانیه** است؛ DNS سیستم یا cleanup native ممکن است به این زمان اضافه کند. اندازه‌گیری warm response حفظ شده؛ برای ظاهراً سریع‌شدن، تست واقعی با TCP reachability جایگزین نشده است. RTT روی `generate_204` همچنان معیار قبلی را دارد.
+- آیکون **History of usage** (ساعت/فلش) به نوار بالای Home اضافه و به همان route موجود `usage_history` وصل شد. مسیر Settings هم باقی است.
+- گزینهٔ **Yesterday** اضافه شد: start و end هر دو روز تقویمی قبلی در timezone گوشی‌اند؛ Today، 7 days، 30 days، Custom و Group by week حفظ شدند. chipها FlowRow شدند تا در عرض کم به خط بعد بروند.
+
+### اعتبارسنجی و چالش‌های تست
+
+- **۶۱ تست واحد JVM** و **۱۳ تست instrumentation** بدون خطا پاس شدند. واحد جدید read مسدود بدون timeout را با cancel آزاد می‌کند و ادامهٔ cleanup بعد از خطا را می‌سنجد. تست‌های اجرایی شامل هشت worker، حفظ پینگ ساب دیگر، توقف و restart صف **۱۵۰ پروفایل**، native overlap/close/cache cleanup، کنترل Stop در Home در عرض 360dp، Yesterday، import/sort/ECH/DNS بودند.
+- ساب خصوصی کاربر **۲۶ پروفایل** وارد کرد؛ QR encode/decode و مسیر مشترک importer پاس شدند. سه probe واقعی اینترنت در این run نتیجهٔ **249 / 194 / 119 ms** دادند. token و configها در تحویل/گزارش عمومی نیستند. علت اولیهٔ شکست import گوشی همچنان بازتولید نشده است.
+- تست UI framework-only روی **APK minified/upload-signed نهایی**، clipboard import، هر سه sort، شروع پینگ و Stop روی شمارنده، بازکردن تاریخچه از Home و انتخاب Yesterday را پاس کرد. screenshotهای محلی برای بررسی چیدمان گرفته شد؛ screenshot حاوی clipboard خصوصی در تحویل کپی نشده است.
+- fixture اولیهٔ native از VLESS بدون رمزنگاری استفاده می‌کرد و طبق سیاست موجود اپ به‌درستی رد شد؛ به peer بی‌پاسخ VMess با security=auto تغییر کرد. پس از آن تست همان قفل cache واقعی را آشکار کرد. fixture خطای import برای دیدن loading، به زمان‌بندی یک fetch فوری وابسته بود؛ با latch پایدار شد. runner framework هم به‌علت overlay کلیپ‌بورد/Toast و ادغام توضیح accessibility آیکون Stop، ابتدا کنترل را نمی‌دید؛ خواندن پنجره‌ها و انتظار رفع overlay اصلاح شد، بدون تغییر رفتار production صرفاً برای تست.
+- شبیه‌ساز مستقل x86_64 با page size **16384** استفاده شد؛ دو شبیه‌ساز قبلی تغییر نکردند. نصب APK نهایی درجا با همان upload certificate موفق شد. در پایان فقط شبیه‌ساز اختصاصی همین کار بسته شد. تست چندساعته notification/OEM و رفتار دوربین/اپراتور واقعی در این مرحله تکرار نشد.
+- `testDebugUnitTest assembleRelease bundleRelease` و build ابزارهای تست موفق؛ امضای APK با apksigner، AAB با jarsigner و zipalign -P16 تأیید شد. ممیزی LOAD/GNU_RELRO nativeهای ۶۴بیتی APK/AAB مناسب 16KB است. nativeها byte-identical با 1.1.0 هستند؛ symbols قبلی همچنان تطبیق دارند، ولی **R8 mapping مخصوص 1.1.2** مجدداً بسته‌بندی شد. هشدار self-signed upload certificate طبیعی است؛ تحلیل نهایی Play پس از آپلود جداگانه انجام می‌شود.
+
+### خروجی و محدودیت انتشار
+
+- APK: **103363632 bytes**؛ SHA256 `1c8a454edb11a34dcfc29eb6c7e4151a05240f40c7b2e99a60206f3805729622`.
+- AAB: **108329085 bytes**؛ SHA256 `260322ec6965baf328c44faf8c2d295903e4005be92ee0d0aad1fd3d1d34d0bd`.
+- پوشهٔ تحویل شامل APK/AAB، native symbols موجود، R8 mapping جدید، SHA256، گزارش native و تست sanitized، README و release notes است. کلید امضا/ساب خصوصی/کانفیگ آماده در خروجی نیست. APK با upload key قبلی است؛ نصب‌های Play ممکن است امضای دیگری داشته باشند و باید از track همان اپ آپدیت شوند، بدون حذف داده برای عبور از اختلاف امضا.
+- هیچ push GitHub، upload Google Play یا deploy عمومی در این نوبت انجام نشد. متن privacy محلیِ آمادهٔ مرحلهٔ 1.1.0 همراه خروجی هست؛ انتشار آن روی سایت همچنان باقی است.
+
+## ثبت اظهارنامهٔ VPN و ارسال نسخهٔ Android 1.1.2 به Google Play — 2026-10-16
+
+- پس از اتصال افزونهٔ Chrome، نشست واقعی Play Console اپ `com.rahanetmci.securevpn` در دسترس قرار گرفت؛ ورود در مرورگر اصلی با نشست in-app قبلی مشترک نبود. فایل AAB از قبل توسط کاربر در Closed testing / Alpha بارگذاری شده بود؛ نسخهٔ 1.1.2، versionCode=7 و release notes صحیح در صفحهٔ release تأیید شد، بنابراین بارگذاری تکراری انجام نشد.
+- اظهارنامهٔ VPN service تکمیل و ذخیره شد: VPN قابلیت اصلی=Yes؛ general VPN=Yes؛ جمع‌آوری دادهٔ شخصی/حساس توسط سرویس VPN=No؛ دستکاری ترافیک اپ‌های دیگر برای درآمدزایی=No. این پاسخ‌ها دربارهٔ خود سرویس VPN هستند، نه جمع‌آوری مستقل SDK تبلیغات. فهرست پروفایل‌ها/گزارش‌ها/تاریخچه محلی‌اند و VPN کاربر ترافیک را به سرور انتخاب‌شدهٔ او می‌فرستد؛ سرویس تحلیل/جمع‌آوری ترافیک متعلق به توسعه‌دهنده مشاهده نشد.
+- فیلم قبلی `https://securevpn.rahanetmci.com/media/securevpn-foreground-service-demo.mp4` در Chrome باز شد و مدت 44.266667 ثانیه، readyState=4 و نبود خطای video تأیید شد؛ فریم اتصال با پوشاندن IP/مشخصات سرور بررسی شد. همان لینکِ موجود در اظهارنامهٔ Foreground service permissions برای VPN service نیز ثبت شد. پیام Your changes have been saved و سپس You're all caught up در App content دیده شد. ثبت فرم، تأیید نهایی سیاست توسط گوگل نیست.
+- اظهارنامهٔ قبلی Foreground service فقط SPECIAL_USE دارد؛ LOCATION نیست. منیفست protobuf داخل خود AAB نهایی مستقیم خوانده شد و هیچ ACCESS_FINE_LOCATION / ACCESS_COARSE_LOCATION / ACCESS_BACKGROUND_LOCATION / FOREGROUND_SERVICE_LOCATION ندارد.
+- Data safety بررسی شد: Approximate location انتخاب شده و Precise location انتخاب نشده است. Approximate به پردازش IP توسط Google Mobile Ads و سرویس‌های نمایش کشور مربوط است و مجوز GPS محسوب نمی‌شود. طبق مستند رسمی Google Mobile Ads، IP ممکن است برای تخمین موقعیت کلی استفاده شود؛ حذف این مورد صرفاً به دلیل نبود مجوز Android اظهارنامه را نادرست می‌کرد. Data safety بدون تغییر باقی ماند: https://developers.google.com/admob/android/privacy/play-data-disclosure
+- اصلاح گزارش قبلی دستیار: بررسی اولیه به منیفست توسعه در ریشهٔ workspace تکیه کرده و به اشتباه گفته بود AAB شناسهٔ آزمایشی AdMob دارد. خود AAB 1.1.2 و منیفست release منبع خصوصی، شناسهٔ ثبت‌شدهٔ SecureVPN را دارند. در این مرحله شناسه یا باینری تغییر نکرد و build جدید لازم نشد.
+- نسخهٔ staged 1.1.2 در Alpha و اظهارنامهٔ VPN با Send changes for review ارسال شدند. وضعیت معتبر نهایی Publishing overview برابر Changes in review است؛ quick checks هنوز در حال اجراست و پس از موفقیت به بررسی گوگل می‌رود. Managed publishing خاموش است؛ بعد از تأیید، نسخه برای همان Closed testing / Alpha منتشر می‌شود، نه Production عمومی. هیچ کشور، تستر، کلید امضا یا تنظیم Data safety تغییر نکرد و GitHub push انجام نشد.
+- شواهد در پوشهٔ SecureVPN-Updates-2026-10-16-1.1.2: play-vpn-declaration-saved.png، play-app-content-complete.png و play-1.1.2-in-review.png. این نوبت فقط تغییر کنسول و مستندات بود؛ تست/بیلد دوباره اجرا نشد.
+
+## نتیجهٔ بررسی Google Play: رد به دلیل نوع حساب توسعه‌دهنده
+
+- کاربر ایمیل رسمی رد نسخهٔ SecureVPN (com.rahanetmci.securevpn) را ارائه کرد. علت اعلام‌شده Play Console Requirements / Developer Account است: اپ‌های تأییدشده برای استفاده از VpnService باید تحت حساب Organization منتشر شوند؛ حساب ارائه‌شده این شرط را تأمین نکرده است. این ایمیل به ایراد کد یا مجوز مکان اشاره ندارد؛ نسخهٔ قبلی در صورت وجود طبق ایمیل باقی می‌ماند.
+- این الزام باید پیش از ارسال در بررسی قبلی دستیار شناسایی می‌شد و از آن بررسی جا مانده بود. کلاینت‌بودن اپ و نداشتن سرور آماده، استفادهٔ واقعی از VpnService را منتفی نمی‌کند؛ تغییر پاسخ‌های صحیح فرم برای دورزدن شرط حساب راه‌حل نیست.
+- منابع رسمی فعلی بررسی شدند: Play Console Requirements (https://support.google.com/googleplay/android-developer/answer/10788890) و تبدیل حساب شخصی به سازمانی (https://support.google.com/googleplay/android-developer/answer/16260648). مسیر مستند شامل تأیید وب‌سایت سازمان، Change account type در Developer account > About you، پروفایل پرداخت سازمانی، D-U-N-S و احراز اطلاعات سازمان است. طبق راهنما پس از تکمیل تبدیل باید حداقل 72 ساعت برای هماهنگی سیستم‌ها صبر کرد و سپس دوباره ارسال کرد. ایجاد حساب سازمانی جدا و انتقال رسمی اپ نیز گزینهٔ دیگر است.
+- هیچ پاسخ نادرست، تغییر نوع حساب، ساخت پروفایل پرداخت، appeal یا ارسال مجدد در این مرحله انجام نشد. برای ادامه باید مشخص شود کاربر سازمان/کسب‌وکار واقعی و مدارک و D-U-N-S مربوط را دارد یا خیر. برای همین علتِ ردشدن، ساخت AAB جدید به‌خودی‌خود مشکل را رفع نمی‌کند.
+
+### پیگیری تفاوت نسخهٔ قبلیِ تأییدشده و ارسال جدید
+
+- در پاسخ به سؤال کاربر دربارهٔ علت تأیید قبلی، منیفست واقعی AABهای 1.0.0، 1.0.3 و 1.1.2 از ZIP خوانده شد: هر سه `android.net.VpnService` و `android.permission.BIND_VPN_SERVICE` دارند و هیچ‌کدام مجوز Android Location ندارند. بنابراین VpnService در ارسال 1.1.2 اضافه نشده است.
+- تغییر مشخص این نوبت، تکمیل فرم قبلاً ثبت‌نشدهٔ VPN service و پاسخ Yes به core VPN و general VPN و ارسال آن همراه نسخهٔ جدید بوده است. این همان فرم متفاوت از Foreground service / SPECIAL_USE است. نمی‌توان سازوکار یا علت عبور بررسی قبلی گوگل را از بیرون قطعی دانست؛ فقط این بار الزام حساب سازمانی در ایمیل رسمی اعمال شده است. ادعا نمی‌شود صرفاً یک checkbox با قطعیت علت رد بوده است.
+
+## تغییر General VPN service به No به درخواست صریح کاربر — 2026-10-16
+
+- کاربر خواست پاسخ General VPN service برای مدل کلاینتیِ بدون ارائهٔ سرور به No تغییر کند و بررسی مجدد امتحان شود. در فرم VPN service فقط همین پاسخ از Yes به No تغییر و با پیام Your changes have been saved ثبت شد. Core purpose=Yes، Data collection سرویس VPN=No، Monetization traffic manipulation=No و لینک فیلم قبلی حفظ شدند. منیفست، کد، فایل AAB، حساب توسعه‌دهنده و Data safety تغییر نکردند.
+- توضیح فعلی خود فرم general VPN را استفاده برای privacy/security عمومی و نمونهٔ nongeneral را دسترسی محدود سازمان/دانشگاه یا سخت‌افزار/مجوز خاص معرفی می‌کند. برای حالت BYO-profile بدون سرور متعلق به توسعه‌دهنده، پاسخ رسمی تفسیری از تیم policy دریافت نشده است؛ این تغییر مطابق انتخاب صریح کاربر انجام شد و به معنی اثبات معافیت از الزام Organization نیست.
+- Publishing overview پس از ذخیره، رد قبلی و release 1.1.2 آمادهٔ ارسال مجدد را نشان داد. دکمهٔ Submit در بارگذاری اولیه موقتاً غیرفعال بود؛ پس از تکمیل بارگذاری و شروع quick checks فعال شد. Submit 1 change for review و سپس Send changes for review اجرا شد و وضعیت نهایی Changes in review برای Closed testing / Alpha، release SecureVPN 1.1.2 تأیید شد. Quick checks هنوز در حال اجراست؛ تأیید نهایی یا رفع الزام سازمانی هنوز دریافت نشده است.
+- شواهد در پوشهٔ SecureVPN-Updates-2026-10-16-1.1.2: play-general-vpn-no-saved.png و play-general-vpn-no-resubmitted.png. هیچ appeal/پیام به پشتیبانی ارسال نشد و build یا GitHub push انجام نشد.
