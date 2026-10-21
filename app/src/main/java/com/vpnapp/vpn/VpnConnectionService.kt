@@ -15,7 +15,6 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.vpnapp.MainActivity
-import com.vpnapp.BuildConfig
 import com.vpnapp.R
 import com.vpnapp.data.ConnectionState
 import com.vpnapp.data.LogLevel
@@ -167,11 +166,9 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
     private fun markConnectionStarted() {
         sessionClock.start()
         connectionStartTime = sessionClock.startedWallMillis
-        if (BuildConfig.CPU_WAKELOCK_EXPERIMENT) {
-            // Keep setup bounded, then allow real screen-off suspend in the Test experiment.
-            try { if (wakeLock?.isHeld == true) wakeLock?.release() }
-            catch (e: Exception) { Log.w(TAG, "Experimental setup wake lock release failed", e) }
-        }
+        // Setup is complete; permit screen-off suspend during the established session.
+        try { if (wakeLock?.isHeld == true) wakeLock?.release() }
+        catch (e: Exception) { Log.w(TAG, "Setup wake lock release failed", e) }
     }
     private fun terminateWorkerNow() {
         check(workerProcessVerified) { "Refusing to terminate the application process" }
@@ -824,15 +821,14 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
             }
         }
         
-        // Baseline keeps a session lock; the Test-only experiment holds it only during setup.
+        // Bound the setup lock; a successfully established session releases it immediately.
         try {
             val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
             wakeLock = powerManager.newWakeLock(
                 PowerManager.PARTIAL_WAKE_LOCK,
                 "SecureVPN::VpnWakeLock"
             )
-            if (BuildConfig.CPU_WAKELOCK_EXPERIMENT) wakeLock?.acquire(60_000L)
-            else wakeLock?.acquire()
+            wakeLock?.acquire(60_000L)
             val isIgnoring = powerManager.isIgnoringBatteryOptimizations(packageName)
             Log.d(TAG, "WakeLock acquired: ${wakeLock?.isHeld}, Battery Optimization Ignored: $isIgnoring")
             FileLogger.write("WakeLock acquired: ${wakeLock?.isHeld}, Battery Optimization Ignored: $isIgnoring")

@@ -1,3 +1,10 @@
+## Android Play1.1.7 / code12 — Signed release prepared — 2026-10-21
+
+- User confirmed1.1.7 CPU experiment worked and explicitly selected it for Play. Promoted the same bounded setup-only CPU lock behavior to standard builds; production version1.1.7/code12, package com.rahanetmci.securevpn, existing live ad IDs. The earlier1.1.6 release preparation is superseded.
+- Signed AAB and APK with existing upload identity; certificate matches prior production AAB. Bundletool/JAR/APK signatures,16KB native/alignment checks and embedded/external R8 mapping match passed. Native bytes unchanged from phone-tested1.1.7, with matching symbols.
+-91 JVM and11 selected production-package Android tests passed on16KB emulator, including five encrypted VPN cycles with no established-session CPU lock. Final minified production APK launched successfully. Phone test/user energy improvements are not quantified; no phone installation changed in this release task.
+- Delivery: SecureVPN-Play-1.1.7, with AAB, APK, symbols, mapping, release notes/name, evidence and hashes. No Play upload/declarations/publication. Source branch codex/android-play-release-1.1.7; details docs/Android-Play-1.1.7-Release.md.
+
 ## Android 1.1.7-test-cpu / code12 — CPU wake-lock experiment — 2026-10-21
 
 - Test-only build flag bounds setup CPU wake lock to60seconds and releases it when connected. Other battery/network controls remain unchanged; flag is rejected for non-preview builds. Baseline1.1.6 is preserved in commit8f79a81.

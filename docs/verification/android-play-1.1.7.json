@@ -1,0 +1,39 @@
+{
+  "version_name": "1.1.7",
+  "version_code": 12,
+  "package": "com.rahanetmci.securevpn",
+  "branch": "codex/android-play-release-1.1.7",
+  "tested_phone_experiment_commit": "a60781c",
+  "user_confirmed_experiment_worked_and_requested_same_behavior_for_play": true,
+  "cpu_policy": "60-second maximum setup CPU lock, released on successful connection; no ongoing connected-session CPU lock",
+  "production_live_ad_ids_verified": true,
+  "debuggable": false,
+  "bundletool_validation_passed": true,
+  "jarsigner_jar_verified": true,
+  "upload_certificate_matches_prior_production_aab": true,
+  "upload_certificate_sha256": "1dba6f54f5d0e8c70480c26fe373447d470f659821c6146b7329ad613880b5d4",
+  "apk_signature_verified": true,
+  "apk_zipalign_16kb_passed": true,
+  "native_64bit_load_and_relro_16kb_passed": true,
+  "native_libraries_identical_to_phone_test_1_1_7": true,
+  "mapping_matches_embedded_aab_mapping": true,
+  "jvm": {
+    "tests": 91,
+    "failures": 0,
+    "errors": 0
+  },
+  "android_acceptance": {
+    "selected_tests": 11,
+    "failures": 0,
+    "seconds": 56.011,
+    "package": "com.rahanetmci.securevpn",
+    "device_page_size": 16384,
+    "five_encrypted_vless_tls_cycles_and_cpu_lock_absence": true,
+    "lan_fakeip_relay_notification_and_telemetry": true
+  },
+  "final_minified_production_apk_launch_passed": true,
+  "physical_energy_savings_quantified": false,
+  "uploaded_to_google_play": false,
+  "aab_sha256": "006c22797fa0d909e1e1fe1328522dd079fbe53bb2076854128a1c52a6880f06",
+  "apk_sha256": "593d81ef7ecbb1c4e4db5e26dce1bf8dfe586122ffafbff3ea23f223e7f8c9cc"
+}
