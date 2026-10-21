@@ -26,6 +26,7 @@ import com.vpnapp.vpn.sstp.SstpEngine
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collectLatest
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
@@ -62,6 +63,33 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
     private val notificationLock = Any()
     private var notificationMonitor: Job? = null
     private var sessionMonitor: Job? = null
+    private val uiVisible = MutableStateFlow(false)
+    private var lanCallback: android.net.ConnectivityManager.NetworkCallback? = null
+    private var lastLanStatus: LanProxyStatus? = null
+    private fun observeLanNetwork() {
+        if (lanCallback != null) return
+        val manager = getSystemService(android.net.ConnectivityManager::class.java)
+        val callback = object : android.net.ConnectivityManager.NetworkCallback() {
+            private fun changed() {
+                if (runtimeLan?.enabled == true && !isDisconnecting.get())
+                    serviceScope?.launch { runCatching { syncLanProxy() } }
+            }
+            override fun onAvailable(network: android.net.Network) = changed()
+            override fun onLost(network: android.net.Network) = changed()
+            override fun onCapabilitiesChanged(network: android.net.Network, caps: android.net.NetworkCapabilities) = changed()
+        }
+        runCatching {
+            manager.registerNetworkCallback(android.net.NetworkRequest.Builder().clearCapabilities()
+                .addTransportType(android.net.NetworkCapabilities.TRANSPORT_VPN).build(), callback)
+            lanCallback = callback
+        }.onFailure { Log.w(TAG, "LAN network observation unavailable", it) }
+    }
+    private fun stopObservingLanNetwork() {
+        lanCallback?.let { callback ->
+            runCatching { getSystemService(android.net.ConnectivityManager::class.java).unregisterNetworkCallback(callback) }
+        }
+        lanCallback = null
+    }
     private var lanProxy: LanVpnProxy? = null
     private var lanNetwork: android.net.Network? = null
     private var lanConfig: LanShareSettings? = null
@@ -78,7 +106,7 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
         val (rx,tx)=counters()
         runCatching { usage.record(usageSession,rx,tx) }.onFailure { Log.w(TAG,"Usage checkpoint failed",it) }
     }
-    private fun syncLanProxy() = synchronized(lanLock) {
+    private fun syncLanProxy(): Unit = synchronized(lanLock) {
         val config=runtimeLan ?: LanShareSettings.read(this)
         val cm=getSystemService(android.net.ConnectivityManager::class.java)
         val network=if (_isRunning.value && config.enabled && !isDisconnecting.get() && !isCancellationRequested.get() && !serviceDestroyed) cm.allNetworks.firstOrNull {
@@ -97,7 +125,7 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
                     .putExtra("message","LAN sharing could not start: ${it.message}")) }
         publishLanStatus(config)
     }
-    private fun publishLanStatus(config: LanShareSettings = runtimeLan ?: LanShareSettings.read(this)) {
+    private fun publishLanStatus(config: LanShareSettings = runtimeLan ?: LanShareSettings.read(this), force: Boolean = false) {
         val proxy=lanProxy
         val status=when {
             !config.enabled -> LanProxyStatus("OFF",config.protocol.name,config.port)
@@ -106,15 +134,18 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
             lanStartError!=null -> LanProxyStatus("ERROR",config.protocol.name,config.port,lastError=lanStartError)
             else -> LanProxyStatus("WAITING",config.protocol.name,config.port)
         }
-        sendBroadcast(Intent(ACTION_LAN_SHARE_STATUS).setPackage(packageName).also(status::writeTo))
+        if (force || status != lastLanStatus) {
+            lastLanStatus = status
+            sendBroadcast(Intent(ACTION_LAN_SHARE_STATUS).setPackage(packageName).also(status::writeTo))
+        }
     }
     private fun startSessionMonitor() {
         sessionMonitor?.cancel()
+        observeLanNetwork()
         sessionMonitor=serviceScope?.launch {
             while(isActive) {
-                delay(5000)
+                delay(30_000)
                 recordUsage()
-                runCatching { syncLanProxy() }.onFailure { Log.w(TAG,"LAN sharing update failed",it) }
             }
         }
     }
@@ -129,7 +160,17 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
     private var wifiLock: WifiManager.WifiLock? = null
     
     // Connection start time for timer display
-    private var connectionStartTime: Long = 0L
+    @Volatile private var connectionStartTime: Long = 0L
+    private val sessionClock = SessionClock(android.os.SystemClock::elapsedRealtime, System::currentTimeMillis)
+    @Volatile private var workerProcessVerified = false
+    private fun markConnectionStarted() {
+        sessionClock.start()
+        connectionStartTime = sessionClock.startedWallMillis
+    }
+    private fun terminateWorkerNow() {
+        check(workerProcessVerified) { "Refusing to terminate the application process" }
+        Process.killProcess(Process.myPid())
+    }
     private var currentMtu = 1400
     
     // Stats broadcasting job for native engine
@@ -159,43 +200,45 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
         stopStatsBroadcaster() // clear any existing job
         
         val isV2Ray = singBoxEngine != null
+        serviceScope?.launch { runCatching { syncLanProxy() } }
         statsBroadcasterJob = serviceScope?.launch {
-            Log.d(TAG, "Stats Broadcaster started (V2Ray=$isV2Ray)")
-            while (_isRunning.value) {
-                delay(1000)
+            uiVisible.collectLatest { visible ->
+                if (!visible) return@collectLatest
+                while (_isRunning.value && !isDisconnecting.get()) {
                 
-                val rx: Long
-                val tx: Long
-                val transport: String
+                    val rx: Long
+                    val tx: Long
+                    val transport: String
                 
-                if (isV2Ray) {
-                    val totals=counters()
-                    rx=totals.first
-                    tx=totals.second
-                    rxBytes.set(rx);txBytes.set(tx)
-                    transport = when (v2rayProfile?.v2rayNetwork?.lowercase()) {
-                        "ws", "websocket" -> "WebSocket"
-                        "grpc" -> "gRPC"
-                        "h2", "http" -> "HTTP/2"
-                        else -> "TCP"
+                    if (isV2Ray) {
+                        val totals=counters()
+                        rx=totals.first
+                        tx=totals.second
+                        rxBytes.set(rx);txBytes.set(tx)
+                        transport = when (v2rayProfile?.v2rayNetwork?.lowercase()) {
+                            "ws", "websocket" -> "WebSocket"
+                            "grpc" -> "gRPC"
+                            "h2", "http" -> "HTTP/2"
+                            else -> "TCP"
+                        }
+                    } else {
+                        // For OpenConnect/SSTP, use our tracked bytes
+                        rx = rxBytes.get()
+                        tx = txBytes.get()
+                        transport = nativeOpenConnectEngine?.getActiveTransport() ?: "TCP"
                     }
-                } else {
-                    // For OpenConnect/SSTP, use our tracked bytes
-                    rx = rxBytes.get()
-                    tx = txBytes.get()
-                    transport = nativeOpenConnectEngine?.getActiveTransport() ?: "TCP"
+                
+                    val duration = sessionClock.durationSeconds()
+                
+                    sendBroadcast(Intent(ACTION_VPN_STATS).setPackage(packageName).apply {
+                        putExtra(EXTRA_RX_BYTES, rx)
+                        putExtra(EXTRA_TX_BYTES, tx)
+                        putExtra(EXTRA_TRANSPORT, transport)
+                        putExtra(EXTRA_CONNECTION_TIME, duration)
+                    })
+                    delay(1000)
                 }
-                
-                val duration = if (connectionStartTime > 0) (System.currentTimeMillis() - connectionStartTime) / 1000 else 0L
-                
-                sendBroadcast(Intent(ACTION_VPN_STATS).setPackage(packageName).apply {
-                    putExtra(EXTRA_RX_BYTES, rx)
-                    putExtra(EXTRA_TX_BYTES, tx)
-                    putExtra(EXTRA_TRANSPORT, transport)
-                    putExtra(EXTRA_CONNECTION_TIME, duration)
-                })
             }
-            Log.d(TAG, "Stats Broadcaster stopped")
         }
     }
     
@@ -288,61 +331,55 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
         isCancellationRequested.set(true)
         connectionTimeoutJob?.cancel()
         connectionTimeoutJob = null
-        sendBroadcast(Intent(ACTION_VPN_STATUS).setPackage(packageName).apply {
-            putExtra(EXTRA_STATUS, "DISCONNECTING")
-        })
         beginShutdown()
     }
 
     private fun beginShutdown() {
-        recordUsage()
-        sessionMonitor?.cancel();sessionMonitor=null
-        synchronized(lanLock) {
-            runCatching { lanProxy?.close() };lanProxy=null
-            publishLanStatus()
-        }
-
-        notificationMonitor?.cancel()
-        notificationMonitor = null
         shutdown.begin(cleanup = {
-            // Close the service-owned TUN before waiting for Go to release its duplicate.
+            sendBroadcast(Intent(ACTION_VPN_STATUS).setPackage(packageName).apply {
+                putExtra(EXTRA_STATUS, "DISCONNECTING")
+                putExtra("closed_worker_pid", Process.myPid())
+            })
+            runBlocking { sessionMonitor?.cancelAndJoin() }; sessionMonitor = null
+            stopObservingLanNetwork()
+            uiVisible.value = false
+            notificationMonitor?.cancel(); notificationMonitor = null
+            recordUsage()
+            synchronized(lanLock) {
+                runCatching { lanProxy?.close() }; lanProxy = null
+                publishLanStatus()
+            }
+            if (adSessionRecorded) runCatching {
+                com.vpnapp.ads.AdCycleStore(this).disconnected(notificationSession)
+            }.onFailure { Log.w(TAG, "Could not complete local ad cycle; VPN unaffected", it) }
             synchronized(tunnelLock) {
                 try { vpnInterface?.close() } catch (e: Exception) { Log.w(TAG, "TUN cleanup failed", e) }
                 vpnInterface = null
             }
             releaseConnectionResources()
-        }, terminate = { timedOut ->
-            if (timedOut) Log.w(TAG, "Native shutdown exceeded 4 seconds; releasing VPN worker process")
+        }, terminate = {
             _isRunning.value = false
             isConnecting.set(false)
             serviceScope?.cancel()
             com.vpnapp.vpn.singbox.ProbeEndpoint.active = null
-            // Killing this dedicated worker closes *all* native fd copies and sockets.
-            // The UI waits for this worker's death; unrelated VPN networks must not affect its state.
-            val processName = if (Build.VERSION.SDK_INT >= 28) android.app.Application.getProcessName()
-                else (getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager)
-                    .runningAppProcesses?.firstOrNull { it.pid == Process.myPid() }?.processName
-            check(processName == "$packageName:vpn") { "Refusing to terminate the application process" }
             try {
                 synchronized(notificationLock) {
                     stopForeground(STOP_FOREGROUND_REMOVE)
                     getSystemService(NotificationManager::class.java).cancel(NOTIFICATION_ID)
                 }
-                if (adSessionRecorded) runCatching {
-                    com.vpnapp.ads.AdCycleStore(this).disconnected(notificationSession)
-                }.onFailure { Log.w(TAG, "Could not complete local ad cycle; VPN unaffected", it) }
                 sendBroadcast(Intent(ACTION_VPN_STATUS).setPackage(packageName).apply {
                     putExtra(EXTRA_STATUS, STATUS_DISCONNECTED)
                     putExtra("closed_worker_pid", Process.myPid())
                 })
                 stopSelf()
-            } finally { Process.killProcess(Process.myPid()) }
-        })
+            } finally { terminateWorkerNow() }
+        }, forceTerminate = { terminateWorkerNow() })
     }
 
     private fun releaseConnectionResources() = synchronized(routingLock) {
         _isRunning.value = false
         connectionStartTime = 0L
+        sessionClock.clear()
         stopStatsBroadcaster()
         // Each resource gets its own cleanup so one failure cannot skip the others.
         try { sstpEngine?.disconnect() } catch (e: Exception) { Log.w(TAG, "SSTP cleanup failed", e) }
@@ -392,6 +429,8 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
         const val ACTION_LAN_SHARE_STATUS = "com.vpnapp.LAN_SHARE_STATUS"
         const val ACTION_LAN_SHARE_STATUS_REQUEST = "com.vpnapp.LAN_SHARE_STATUS_REQUEST"
         const val ACTION_REQUEST_STATE = "com.vpnapp.REQUEST_STATE"
+        const val ACTION_UI_VISIBILITY = "com.vpnapp.UI_VISIBILITY"
+        const val EXTRA_UI_VISIBLE = "ui_visible"
         const val ACTION_UPDATE_ROUTING = "com.vpnapp.UPDATE_ROUTING"
         const val ACTION_RESTORE_NOTIFICATION = "com.vpnapp.RESTORE_NOTIFICATION"
         
@@ -465,10 +504,15 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
         }
         
         createNotificationChannel()
+        val processName = if (Build.VERSION.SDK_INT >= 28) android.app.Application.getProcessName()
+            else (getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager)
+                .runningAppProcesses?.firstOrNull { it.pid == Process.myPid() }?.processName
+        workerProcessVerified = processName == "$packageName:vpn"
         serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     }
     
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.hasExtra(EXTRA_UI_VISIBLE) == true) uiVisible.value = intent.getBooleanExtra(EXTRA_UI_VISIBLE, false)
         sendBroadcast(Intent(ACTION_PROTECTION_STATE).setPackage(packageName)
             .putExtra("always_on", Build.VERSION.SDK_INT >= 29 && isAlwaysOn)
             .putExtra("lockdown", Build.VERSION.SDK_INT >= 29 && isLockdownEnabled))
@@ -583,10 +627,13 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
                 serviceScope?.launch { syncLanProxy() }
                 if(!_isRunning.value && !isConnecting.get()) stopSelf(startId)
             }
+            ACTION_UI_VISIBILITY -> {
+                if (!_isRunning.value && !isConnecting.get()) stopSelf(startId)
+            }
             ACTION_LAN_SHARE_STATUS_REQUEST -> {
                 // Read-only status request must never reconnect or keep an idle worker alive.
-                if(_isRunning.value) syncLanProxy() else {
-                    publishLanStatus()
+                if(_isRunning.value) { syncLanProxy(); publishLanStatus(force = true) } else {
+                    publishLanStatus(force = true)
                     if(!isConnecting.get()) stopSelf(startId)
                 }
             }
@@ -657,11 +704,12 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
                         putExtra(EXTRA_COUNTRY_CODE, currentCountryCode)
                     })
                     // Also send current stats
+                    val totals = counters()
                     sendBroadcast(Intent(ACTION_VPN_STATS).setPackage(packageName).apply {
-                        putExtra(EXTRA_RX_BYTES, rxBytes.get())
-                        putExtra(EXTRA_TX_BYTES, txBytes.get())
+                        putExtra(EXTRA_RX_BYTES, totals.first)
+                        putExtra(EXTRA_TX_BYTES, totals.second)
                         putExtra(EXTRA_TRANSPORT, nativeOpenConnectEngine?.getActiveTransport() ?: "TCP")
-                        putExtra(EXTRA_CONNECTION_TIME, if (connectionStartTime > 0) (System.currentTimeMillis() - connectionStartTime) / 1000 else 0L)
+                        putExtra(EXTRA_CONNECTION_TIME, sessionClock.durationSeconds())
                     })
                 } else {
                     sendBroadcast(Intent(ACTION_VPN_STATUS).setPackage(packageName).apply {
@@ -813,6 +861,7 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
 
         // Initialize connection timer (will be set to current time when connected)
         connectionStartTime = 0L
+        sessionClock.clear()
         
         serviceScope?.launch {
             try {
@@ -1030,6 +1079,7 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
             
             if (vpnInterface != null) {
                 _isRunning.value = true
+                markConnectionStarted()
                 recordSuccessfulAdCycleSession()
                 
                 // Initialize cached output stream for writing received packets to VPN
@@ -1043,8 +1093,6 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
                 // Start Stats Broadcaster for ALL protocols
                 startStatsBroadcaster()
                 
-                // Set connection start time for timer (CRITICAL for SSTP timer display)
-                connectionStartTime = System.currentTimeMillis()
                 
                 // Start data receive loop (if using Java engine)
                 openConnectEngine?.let { engine ->
@@ -1306,7 +1354,7 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
                         Log.i(TAG, "Sing-box started successfully")
                         FileLogger.write("Sing-box started successfully")
                         
-                        connectionStartTime = System.currentTimeMillis()
+                        markConnectionStarted()
                         _isRunning.value = true
                         recordSuccessfulAdCycleSession()
                         

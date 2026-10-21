@@ -4,6 +4,14 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class AdCyclePolicyTest {
+    @Test fun waitingForCyclesNeedsAnEventAndCooldownUsesOneDeadline() {
+        assertNull(AdCyclePolicy.delayUntilEligible(AdCycleState(completedCycles = 1), 1000))
+        assertNull(AdCyclePolicy.delayUntilEligible(AdCycleState(successfulSession = 5, completedCycles = 2), 1000))
+        assertEquals(0L, AdCyclePolicy.delayUntilEligible(AdCycleState(completedCycles = 2), 1000))
+        val state = AdCycleState(completedCycles = 2, lastAttemptMillis = 10_000)
+        assertEquals(30_000L, AdCyclePolicy.delayUntilEligible(state, 100_000))
+        assertEquals(0L, AdCyclePolicy.delayUntilEligible(state, 130_000))
+    }
     private fun cycle(state: AdCycleState, id: Long) = AdCyclePolicy.disconnected(AdCyclePolicy.connected(state, id), id)
     @Test fun twoSuccessfulCompleteSessionsAreRequired() {
         val first = cycle(AdCycleState(), 10)

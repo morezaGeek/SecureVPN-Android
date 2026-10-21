@@ -50,7 +50,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -104,20 +105,20 @@ fun VpnApp(viewModel: VpnViewModel = viewModel()) {
         com.vpnapp.ui.theme.ThemeState.loadTheme(context)
     }
     
-    val localAddresses by viewModel.localAddresses.collectAsState()
-    val alwaysOn by viewModel.alwaysOn.collectAsState()
-    val killSwitch by viewModel.killSwitch.collectAsState()
-    val connectionInfo by viewModel.connectionInfo.collectAsState()
-    val profiles by viewModel.profiles.collectAsState()
-    val selectedProfile by viewModel.selectedProfile.collectAsState()
-    val smartPreparing by viewModel.smartPreparing.collectAsState()
-    val logs by viewModel.logs.collectAsState()
-    val subscriptions by viewModel.subscriptions.collectAsState()
-    val subscriptionImport by viewModel.subscriptionImport.collectAsState()
-    val profileSort by viewModel.profileSort.collectAsState()
-    val selectedSubscriptionId by viewModel.selectedSubscriptionId.collectAsState()
-    val refreshingSubscriptions by viewModel.refreshingSubscriptions.collectAsState()
-    val latencyTestState by viewModel.latencyTestState.collectAsState()
+    val localAddresses by viewModel.localAddresses.collectAsStateWithLifecycle()
+    val alwaysOn by viewModel.alwaysOn.collectAsStateWithLifecycle()
+    val killSwitch by viewModel.killSwitch.collectAsStateWithLifecycle()
+    val connectionInfo by viewModel.connectionInfo.collectAsStateWithLifecycle()
+    val profiles by viewModel.profiles.collectAsStateWithLifecycle()
+    val selectedProfile by viewModel.selectedProfile.collectAsStateWithLifecycle()
+    val smartPreparing by viewModel.smartPreparing.collectAsStateWithLifecycle()
+    val logs by viewModel.logs.collectAsStateWithLifecycle()
+    val subscriptions by viewModel.subscriptions.collectAsStateWithLifecycle()
+    val subscriptionImport by viewModel.subscriptionImport.collectAsStateWithLifecycle()
+    val profileSort by viewModel.profileSort.collectAsStateWithLifecycle()
+    val selectedSubscriptionId by viewModel.selectedSubscriptionId.collectAsStateWithLifecycle()
+    val refreshingSubscriptions by viewModel.refreshingSubscriptions.collectAsStateWithLifecycle()
+    val latencyTestState by viewModel.latencyTestState.collectAsStateWithLifecycle()
     
     // State for editing profile
     var profileToEdit by remember { mutableStateOf<VpnProfile?>(null) }
@@ -176,49 +177,15 @@ fun VpnApp(viewModel: VpnViewModel = viewModel()) {
         viewModel.refreshLocalAddresses()
         val intent = Intent(context, VpnConnectionService::class.java).apply {
             action = VpnConnectionService.ACTION_CONNECT
+            putExtra(VpnConnectionService.EXTRA_UI_VISIBLE, true)
             com.vpnapp.vpn.singbox.TunnelDnsSettings(viewModel.tunnelDnsUrl.value,viewModel.useFakeIp.value).writeTo(this)
             com.vpnapp.vpn.LanShareSettings.read(context).writeTo(this)
-            putExtra(VpnConnectionService.EXTRA_SERVER_IP_INPUT, profile.serverAddress)
-            putExtra(VpnConnectionService.EXTRA_SERVER_PORT, profile.port)
-            putExtra(VpnConnectionService.EXTRA_PROTOCOL, profile.protocol.name)
-            putExtra(VpnConnectionService.EXTRA_USERNAME, profile.username)
-            putExtra(VpnConnectionService.EXTRA_PASSWORD, profile.password)
-            putExtra(VpnConnectionService.EXTRA_SKIP_CERT_VERIFY, profile.skipCertificateVerification)
-            // Pass profile name for notification
-            putExtra(VpnConnectionService.EXTRA_PROFILE_NAME, profile.name)
-            putExtra(VpnConnectionService.EXTRA_PROFILE_ID, profile.id)
-
-            // Pass V2ray specific fields
-            android.util.Log.d("MainActivity", "Starting VPN: ${profile.protocol}")
-            putExtra(VpnConnectionService.EXTRA_V2RAY_UUID, profile.v2rayUuid)
-            putExtra(VpnConnectionService.EXTRA_V2RAY_ALTERID, profile.v2rayAlterId)
-            putExtra(VpnConnectionService.EXTRA_V2RAY_SECURITY, profile.v2raySecurity)
-            putExtra(VpnConnectionService.EXTRA_VLESS_ENCRYPTION, profile.vlessEncryption)
-            putExtra(VpnConnectionService.EXTRA_V2RAY_NETWORK, profile.v2rayNetwork)
-            putExtra(VpnConnectionService.EXTRA_V2RAY_TYPE, profile.v2rayType)
-            putExtra("v2ray_xhttp_extra", profile.v2rayXhttpExtra)
-            putExtra(VpnConnectionService.EXTRA_V2RAY_HOST, profile.v2rayHost)
-            putExtra(VpnConnectionService.EXTRA_V2RAY_PATH, profile.v2rayPath)
-            putExtra(VpnConnectionService.EXTRA_V2RAY_TLS, profile.v2rayTls)
-            putExtra(VpnConnectionService.EXTRA_V2RAY_SNI, profile.v2raySni)
-            putExtra(VpnConnectionService.EXTRA_V2RAY_ALPN, profile.v2rayAlpn)
-            putExtra(VpnConnectionService.EXTRA_V2RAY_FP, profile.v2rayFp)
-            putExtra(VpnConnectionService.EXTRA_V2RAY_FLOW, profile.v2rayFlow)
-            putExtra(VpnConnectionService.EXTRA_V2RAY_PBK, profile.v2rayPbk)
-            putExtra(VpnConnectionService.EXTRA_V2RAY_SHORT_ID, profile.v2rayShortId)
-            putExtra("v2ray_ech", profile.v2rayEch)
-            putExtra("hysteria_obfs_min", profile.hysteriaObfsMinPacketSize)
-            putExtra("hysteria_obfs_max", profile.hysteriaObfsMaxPacketSize)
-            putExtra("hysteria_obfs", profile.hysteriaObfs)
-            putExtra("hysteria_obfs_password", profile.hysteriaObfsPassword)
+            com.vpnapp.vpn.ProfileConnectionExtras.write(this, profile)
 
             // Pass global performance settings
             putExtra(VpnConnectionService.EXTRA_BUFFER_SIZE, viewModel.bufferSize.value)
             putExtra(VpnConnectionService.EXTRA_TCP_NODELAY, viewModel.tcpNoDelay.value)
-            // Pass DTLS disable setting from profile
-            putExtra(VpnConnectionService.EXTRA_DISABLE_DTLS, profile.disableDtls)
             putExtra(VpnConnectionService.EXTRA_MTU, viewModel.mtuSize.value)
-            putExtra(VpnConnectionService.EXTRA_USE_NATIVE, profile.useNative)
             // Pass split tunneling apps
             putStringArrayListExtra(VpnConnectionService.EXTRA_EXCLUDED_APPS, ArrayList(viewModel.excludedApps.value))
             // Pass bypass Iran setting
@@ -305,6 +272,7 @@ fun VpnApp(viewModel: VpnViewModel = viewModel()) {
             try {
                 context.startService(Intent(context, VpnConnectionService::class.java).apply {
                     action = VpnConnectionService.ACTION_REQUEST_STATE
+                    putExtra(VpnConnectionService.EXTRA_UI_VISIBLE, true)
                 })
             } catch (e: Exception) {
                 android.util.Log.d("MainActivity", "Service state request unavailable")
@@ -312,6 +280,11 @@ fun VpnApp(viewModel: VpnViewModel = viewModel()) {
         }
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_START) requestState()
+            if (event == Lifecycle.Event.ON_STOP) runCatching {
+                context.startService(Intent(context, VpnConnectionService::class.java)
+                    .setAction(VpnConnectionService.ACTION_UI_VISIBILITY)
+                    .putExtra(VpnConnectionService.EXTRA_UI_VISIBLE, false))
+            }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) requestState()
@@ -444,15 +417,15 @@ fun VpnApp(viewModel: VpnViewModel = viewModel()) {
         }
         
         composable("settings") {
-            val bufferSize by viewModel.bufferSize.collectAsState()
-            val tcpNoDelay by viewModel.tcpNoDelay.collectAsState()
-            val mtuSize by viewModel.mtuSize.collectAsState()
-            val tunnelDnsUrl by viewModel.tunnelDnsUrl.collectAsState()
-            val useFakeIp by viewModel.useFakeIp.collectAsState()
-            val excludedApps by viewModel.excludedApps.collectAsState()
-            val bypassIran by viewModel.bypassIran.collectAsState()
-            val bypassPrivateIps by viewModel.bypassPrivateIps.collectAsState()
-            val forceXhttpStreamUp by viewModel.forceXhttpStreamUp.collectAsState()
+            val bufferSize by viewModel.bufferSize.collectAsStateWithLifecycle()
+            val tcpNoDelay by viewModel.tcpNoDelay.collectAsStateWithLifecycle()
+            val mtuSize by viewModel.mtuSize.collectAsStateWithLifecycle()
+            val tunnelDnsUrl by viewModel.tunnelDnsUrl.collectAsStateWithLifecycle()
+            val useFakeIp by viewModel.useFakeIp.collectAsStateWithLifecycle()
+            val excludedApps by viewModel.excludedApps.collectAsStateWithLifecycle()
+            val bypassIran by viewModel.bypassIran.collectAsStateWithLifecycle()
+            val bypassPrivateIps by viewModel.bypassPrivateIps.collectAsStateWithLifecycle()
+            val forceXhttpStreamUp by viewModel.forceXhttpStreamUp.collectAsStateWithLifecycle()
             
             SettingsScreen(
                 bufferSize = bufferSize,
@@ -490,7 +463,7 @@ fun VpnApp(viewModel: VpnViewModel = viewModel()) {
         }
 
         composable("split_tunnel") {
-            val excludedApps by viewModel.excludedApps.collectAsState()
+            val excludedApps by viewModel.excludedApps.collectAsStateWithLifecycle()
             
             SplitTunnelScreen(
                 excludedApps = excludedApps,

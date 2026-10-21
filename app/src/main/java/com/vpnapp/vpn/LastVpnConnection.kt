@@ -1,6 +1,5 @@
 package com.vpnapp.vpn
 
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.util.AtomicFile
@@ -12,15 +11,18 @@ object LastVpnConnection {
     private fun file(context: Context)=AtomicFile(File(context.noBackupFilesDir,"last-vpn-connection"))
     fun save(context: Context,intent: Intent) {
         val target=file(context);val stream=target.startWrite()
-        try { stream.write(intent.toUri(Intent.URI_INTENT_SCHEME).toByteArray());target.finishWrite(stream) }
+        try {
+            val selection=Intent().putExtra(VpnConnectionService.EXTRA_PROFILE_ID, intent.getStringExtra(VpnConnectionService.EXTRA_PROFILE_ID))
+            stream.write(selection.toUri(Intent.URI_INTENT_SCHEME).toByteArray());target.finishWrite(stream)
+        }
         catch(error: Exception) { target.failWrite(stream);throw error }
     }
     fun restore(context: Context): Intent? = runCatching {
-        val intent=Intent.parseUri(String(file(context).readFully()),Intent.URI_INTENT_SCHEME)
-        val id=intent.getStringExtra(VpnConnectionService.EXTRA_PROFILE_ID)
-        if(ProfileRepository.getInstance(context).loadProfiles().none { it.id==id }) return null
-        intent.component=ComponentName(context,VpnConnectionService::class.java)
-        intent.action=VpnConnectionService.ACTION_CONNECT
+        val saved=Intent.parseUri(String(file(context).readFully()),Intent.URI_INTENT_SCHEME)
+        val id=saved.getStringExtra(VpnConnectionService.EXTRA_PROFILE_ID)
+        val profile=ProfileRepository.getInstance(context).loadProfiles().firstOrNull { it.id==id } ?: return null
+        val intent=Intent(context,VpnConnectionService::class.java).setAction(VpnConnectionService.ACTION_CONNECT)
+        ProfileConnectionExtras.write(intent, profile)
         val prefs=context.getSharedPreferences("vpn_app_prefs",0)
         com.vpnapp.vpn.singbox.TunnelDnsSettings(prefs.getString(com.vpnapp.vpn.singbox.TunnelDns.URL_KEY,com.vpnapp.vpn.singbox.TunnelDns.DEFAULT_URL)!!,
             prefs.getBoolean(com.vpnapp.vpn.singbox.TunnelDns.FAKE_IP_KEY,true)).writeTo(intent)

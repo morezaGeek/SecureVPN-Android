@@ -2,7 +2,7 @@ package com.vpnapp.ui.components
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import com.vpnapp.ui.components.appClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -85,7 +85,7 @@ fun ProtocolChip(
         modifier = modifier
             .clip(RoundedCornerShape(20.dp))
             .background(backgroundColor)
-            .clickable(onClick = onClick)
+            .appClickable(onClick = onClick)
             .padding(12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp)
@@ -165,7 +165,7 @@ private fun ProtocolOption(
             .background(
                 if (isSelected) color.copy(alpha = 0.15f) else Color.Transparent
             )
-            .clickable(onClick = onClick)
+            .appClickable(onClick = onClick)
             .padding(12.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically

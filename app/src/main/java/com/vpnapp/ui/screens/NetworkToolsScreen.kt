@@ -17,6 +17,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -44,7 +47,15 @@ fun NetworkToolsScreen(alwaysOn: Boolean, lockdown: Boolean, connected: Boolean,
     var showProtection by remember { mutableStateOf(false) }
     var runtimeStatus by remember { mutableStateOf<LanProxyStatus?>(null) }
     var addresses by remember { mutableStateOf(LocalNetworkInfo.addresses(context,true)) }
-    LaunchedEffect(Unit) { while(true) { addresses=LocalNetworkInfo.addresses(context,true);kotlinx.coroutines.delay(5000) } }
+    val owner = LocalLifecycleOwner.current
+    LaunchedEffect(owner) {
+        owner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (true) {
+                addresses = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { LocalNetworkInfo.addresses(context,true) }
+                kotlinx.coroutines.delay(5000)
+            }
+        }
+    }
     fun requestStatus() {
         runCatching { context.startService(Intent(context,VpnConnectionService::class.java)
             .setAction(VpnConnectionService.ACTION_LAN_SHARE_STATUS_REQUEST)) }

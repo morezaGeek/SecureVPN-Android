@@ -4,7 +4,7 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import com.vpnapp.ui.components.appClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -758,7 +758,7 @@ private fun IpAddressDisplay(
                     countryCode?.takeIf { it.length == 2 }?.let {
                         Text(getFlagEmoji(it.uppercase(Locale.ROOT)), style = MaterialTheme.typography.titleMedium)
                     }
-                    Column(Modifier.widthIn(min = 68.dp).heightIn(min = 48.dp).clickable(onClick = onPingClick),
+                    Column(Modifier.widthIn(min = 68.dp).heightIn(min = 48.dp).appClickable(onClick = onPingClick),
                         verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("Ping", style = MaterialTheme.typography.labelSmall, color = CurrentTextSecondary)
                         Text(if (ping > 0) "${ping}ms" else if (ping == -1L) "Checking..." else "Fail",

@@ -7,7 +7,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.ui.draw.scale
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import com.vpnapp.ui.components.appClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -269,7 +269,7 @@ fun ProfileCardCompact(
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
             .background(if (isSelected) protocolColor.copy(alpha = 0.1f) else Color.Transparent)
-            .clickable(onClick = onClick)
+            .appClickable(onClick = onClick)
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)

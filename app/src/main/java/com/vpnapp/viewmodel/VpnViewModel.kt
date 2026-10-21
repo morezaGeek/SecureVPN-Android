@@ -161,11 +161,14 @@ class VpnViewModel @JvmOverloads constructor(application: Application,
         VpnProtocol.VLESS, VpnProtocol.VMESS, VpnProtocol.TROJAN, VpnProtocol.SHADOWSOCKS, VpnProtocol.HYSTERIA2)
 
     private inner class ProbeTransport(val core: ProbeEndpoint?, val network: Network?) {
-        fun open(endpoint: String): ProbeHttp = ProbeHttp.open(URL(endpoint)) { host, port ->
-            core?.connect(host, port) ?: connectThroughDefaultVpn(host, port)
+        fun open(endpoint: String, resources: com.vpnapp.util.ProbeResources): ProbeHttp {
+            val register: (java.net.Socket) -> Unit = { socket -> resources.register { socket.close() } }
+            return ProbeHttp.open(URL(endpoint), registerSocket = register) { host, port ->
+                core?.connect(host, port, register) ?: connectThroughDefaultVpn(host, port, register)
+            }
         }
 
-        private fun connectThroughDefaultVpn(host: String, port: Int): java.net.Socket {
+        private fun connectThroughDefaultVpn(host: String, port: Int, register: (java.net.Socket) -> Unit): java.net.Socket {
             val vpn = checkNotNull(network)
             fun requireCurrent() = check(connectivity.activeNetwork == vpn && tunnelNetwork() == vpn) {
                 "VPN network changed during probe"
@@ -180,6 +183,7 @@ class VpnViewModel @JvmOverloads constructor(application: Application,
                 requireCurrent()
                 val socket = java.net.Socket()
                 try {
+                    register(socket)
                     socket.soTimeout = 3000
                     socket.tcpNoDelay = true
                     socket.connect(java.net.InetSocketAddress(address, port), 3000)
@@ -275,12 +279,16 @@ class VpnViewModel @JvmOverloads constructor(application: Application,
                 var conn: HttpURLConnection? = null
                 try {
                     // Bind both DNS and HTTP to a physical network, never the current VPN.
-                    conn = network.openConnection(URL(ep)) as HttpURLConnection
-                    conn.connectTimeout = 3000
-                    conn.readTimeout = 3000
-                    conn.useCaches = false
-                    conn.setRequestProperty("Connection", "close")
-                    val resp = conn.inputStream.bufferedReader().use { it.readText() }
+                    val resp = com.vpnapp.util.cancellableProbe { resources ->
+                        val connection = network.openConnection(URL(ep)) as HttpURLConnection
+                        conn = connection
+                        resources.register { connection.disconnect() }
+                        connection.connectTimeout = 3000
+                        connection.readTimeout = 3000
+                        connection.useCaches = false
+                        connection.setRequestProperty("Connection", "close")
+                        connection.inputStream.bufferedReader().use { it.readText() }
+                    }
                     val ip = resp.trim()
                     coroutineContext.ensureActive()
                     if (originalNetwork != network || physicalNetwork() != network) return@launch
@@ -615,6 +623,19 @@ class VpnViewModel @JvmOverloads constructor(application: Application,
         addLog(profile.id, profile.name, LogLevel.INFO, "Initiating connection to ${profile.serverAddress}:${profile.port}")
     }
     
+    private fun workerAlive(pid: Int): Boolean = try { android.system.Os.kill(pid, 0); true }
+        catch (_: android.system.ErrnoException) { false }
+
+    private fun confirmWorkerExit(pid: Int) {
+        if (pid <= 0 || disconnectConfirmationJob?.isActive == true) return
+        disconnectConfirmationJob = viewModelScope.launch {
+            if (com.vpnapp.vpn.VpnDisconnectConfirmation.awaitExit(pid, ::workerAlive))
+                updateConnectionStatus("DISCONNECTED", null, null)
+            else updateConnectionStatus("ERROR", null, null,
+                message = "VPN service shutdown could not be confirmed. Please retry.")
+        }
+    }
+
     // Called by MainActivity when Broadcast received
     fun updateConnectionStatus(status: String?, privateIp: String?, serverIp: String?, mtu: Int = 1400, message: String? = null, closedWorkerPid: Int = 0) {
         val profile = _connectionInfo.value.profile ?: _selectedProfile.value
@@ -626,6 +647,7 @@ class VpnViewModel @JvmOverloads constructor(application: Application,
                 disconnectConfirmationJob?.cancel()
                 if (_connectionInfo.value.state == ConnectionState.CONNECTED) return
                 probeNetwork = tunnelNetwork()
+                trafficRates.reset()
                 connectionGeneration++
                 geoInfoJob?.cancel()
                 pingJob?.cancel()
@@ -654,23 +676,10 @@ class VpnViewModel @JvmOverloads constructor(application: Application,
                 checkPing(profile.id, profile.name)
             }
             "DISCONNECTED" -> {
-                fun workerAlive(pid: Int): Boolean {
-                    return try { android.system.Os.kill(pid, 0); true }
-                    catch (_: android.system.ErrnoException) { false }
-                }
                 // Never use the device-wide VPN network here: it may belong to another app.
                 if (com.vpnapp.vpn.VpnDisconnectConfirmation.requiresWait(closedWorkerPid, ::workerAlive)) {
-                    if (disconnectConfirmationJob?.isActive != true) {
-                        _connectionInfo.update { it.copy(state = ConnectionState.DISCONNECTING) }
-                        disconnectConfirmationJob = viewModelScope.launch {
-                            if (com.vpnapp.vpn.VpnDisconnectConfirmation.awaitExit(closedWorkerPid, ::workerAlive)) {
-                                updateConnectionStatus("DISCONNECTED", null, null)
-                            } else {
-                                updateConnectionStatus("ERROR", null, null,
-                                    message = "VPN service shutdown could not be confirmed. Please retry.")
-                            }
-                        }
-                    }
+                    _connectionInfo.update { it.copy(state = ConnectionState.DISCONNECTING) }
+                    confirmWorkerExit(closedWorkerPid)
                     return
                 }
                 disconnectConfirmationJob?.cancel()
@@ -711,6 +720,8 @@ class VpnViewModel @JvmOverloads constructor(application: Application,
                 geoInfoJob?.cancel()
                 pingJob?.cancel()
                 _connectionInfo.update { it.copy(state = ConnectionState.DISCONNECTING) }
+                // A forced worker exit may not get a final broadcast; observe its PID from the start.
+                confirmWorkerExit(closedWorkerPid)
             }
             "LOG" -> {
                  val msg = message ?: return
@@ -728,19 +739,12 @@ class VpnViewModel @JvmOverloads constructor(application: Application,
         // Service will handle actual disconnect and broadcast
     }
     
-    // Real Traffic Stats
+    private val trafficRates = com.vpnapp.data.TrafficRateTracker(android.os.SystemClock::elapsedRealtime)
+
     fun updateTrafficStats(totalRx: Long, totalTx: Long, transport: String = "TCP", connectionTimeSeconds: Long = 0L) {
-        val currentInfo = _connectionInfo.value
-        val currentStats = currentInfo.stats
-        
-        // Calculate speed based on diff (assuming 2 second interval in v3.9.4)
-        val diffRx = totalRx - currentStats.totalDownloaded
-        val diffTx = totalTx - currentStats.totalUploaded
-        
-        // Speed = diff / 2 (since polling is every 2 seconds)
-        val downSpeed = if (diffRx >= 0) diffRx / 2 else 0
-        val upSpeed = if (diffTx >= 0) diffTx / 2 else 0
-        
+        if (_connectionInfo.value.state != ConnectionState.CONNECTED) trafficRates.reset()
+        val (downSpeed, upSpeed) = trafficRates.sample(totalRx, totalTx)
+
         // Use connection time from service (in milliseconds format for consistency)
         val connectedTimeMs = connectionTimeSeconds * 1000
         
@@ -871,7 +875,9 @@ class VpnViewModel @JvmOverloads constructor(application: Application,
             for (providerUrl in if (transport != null) providers + providers else emptyList()) {
                 coroutineContext.ensureActive()
                 try {
-                    val result = transport!!.open(providerUrl).use { it.get() }
+                    val result = com.vpnapp.util.cancellableProbe { resources ->
+                        transport!!.open(providerUrl, resources).use { it.get() }
+                    }
                     if (result.status == 200) {
                         val response = result.body
                         
@@ -957,7 +963,8 @@ class VpnViewModel @JvmOverloads constructor(application: Application,
             for (endpoint in if (transport != null) endpoints else emptyList()) {
                 coroutineContext.ensureActive()
                 try {
-                    transport!!.open(endpoint).use { session ->
+                    com.vpnapp.util.cancellableProbe { resources ->
+                    transport!!.open(endpoint, resources).use { session ->
                         // Establish SOCKS/TCP/TLS and warm up the remote path before timing.
                         check(session.get(keepAlive = true).status in listOf(200, 204))
                         repeat(2) {
@@ -967,6 +974,7 @@ class VpnViewModel @JvmOverloads constructor(application: Application,
                             check(response.status in listOf(200, 204))
                             bestPing = minOf(bestPing, android.os.SystemClock.elapsedRealtime() - start)
                         }
+                    }
                     }
                     if (bestPing != Long.MAX_VALUE) break
                 } catch (e: kotlinx.coroutines.CancellationException) {
@@ -1124,7 +1132,7 @@ class VpnViewModel @JvmOverloads constructor(application: Application,
         refreshAllSubscriptions()
     }
 
-    fun onAppBackground() { appInForeground = false }
+    fun onAppBackground() { appInForeground = false; trafficRates.reset() }
 
     fun selectSubscription(id: String?) {
         val valid = id?.takeIf { selected -> _subscriptions.value.any { it.id == selected } }

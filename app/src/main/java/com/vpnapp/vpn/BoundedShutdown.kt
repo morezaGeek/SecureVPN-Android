@@ -9,20 +9,27 @@ internal class BoundedShutdown(private val timeoutMillis: Long = 4000) {
     private val started = AtomicBoolean()
     private val finished = AtomicBoolean()
 
-    fun begin(cleanup: () -> Unit, terminate: (timedOut: Boolean) -> Unit) {
+    fun begin(cleanup: () -> Unit, terminate: (timedOut: Boolean) -> Unit,
+              forceTerminate: () -> Unit = { terminate(true) }) {
         if (!started.compareAndSet(false, true)) return
         val timer = Executors.newSingleThreadScheduledExecutor { task ->
             Thread(task, "vpn-stop-deadline").apply { isDaemon = true }
         }
-        fun finish(timedOut: Boolean) {
+        // The deadline also covers terminate(): notification/file IPC there can block.
+        timer.schedule({
             if (finished.compareAndSet(false, true)) {
-                timer.shutdownNow()
-                terminate(timedOut)
+                try { forceTerminate() } finally { timer.shutdown() }
             }
-        }
-        timer.schedule({ finish(true) }, timeoutMillis, TimeUnit.MILLISECONDS)
+        }, timeoutMillis, TimeUnit.MILLISECONDS)
         Thread({
-            try { cleanup() } finally { finish(false) }
+            try { cleanup() } finally {
+                if (!finished.get()) {
+                    try { terminate(false) } finally {
+                        finished.set(true)
+                        timer.shutdownNow()
+                    }
+                }
+            }
         }, "vpn-stop-cleanup").apply { isDaemon = true }.start()
     }
 }

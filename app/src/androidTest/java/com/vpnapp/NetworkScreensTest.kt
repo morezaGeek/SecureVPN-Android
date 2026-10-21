@@ -68,6 +68,12 @@ class NetworkScreensTest {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         compose.setContent { VPNAppTheme { NetworkToolsScreen(false,false,false) {} } }
         compose.waitForIdle()
+        // Let the real initial OFF response and worker teardown finish before injecting a display fixture.
+        compose.waitUntil(5000) {
+            context.getSystemService(android.app.ActivityManager::class.java).runningAppProcesses
+                .none { it.processName == "${context.packageName}:vpn" } &&
+                compose.onAllNodesWithText("Sharing is off").fetchSemanticsNodes().isNotEmpty()
+        }
         val status=LanProxyStatus("LISTENING","HTTP",10808,3,1,
             "Client used SOCKS5, but this port is HTTP. Select HTTP on the other device.")
         val event=android.content.Intent(VpnConnectionService.ACTION_LAN_SHARE_STATUS).setPackage(context.packageName)

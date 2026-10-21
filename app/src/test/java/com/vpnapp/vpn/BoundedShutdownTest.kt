@@ -7,6 +7,21 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
 class BoundedShutdownTest {
+    @Test fun blockedFinalizationStillHasAnIndependentDeadline() {
+        val finalizing = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val forced = CountDownLatch(1)
+        val shutdown = BoundedShutdown(100)
+        shutdown.begin({}, {
+            finalizing.countDown()
+            release.await()
+        }, { forced.countDown() })
+        try {
+            assertTrue(finalizing.await(2, TimeUnit.SECONDS))
+            assertTrue("Finalization cancelled the deadline", forced.await(2, TimeUnit.SECONDS))
+        } finally { release.countDown() }
+    }
+
     @Test fun blockedNativeCleanupCannotBlockDeadlineAndOnlyTerminatesOnce() {
         val releaseNative = CountDownLatch(1)
         val terminated = CountDownLatch(1)

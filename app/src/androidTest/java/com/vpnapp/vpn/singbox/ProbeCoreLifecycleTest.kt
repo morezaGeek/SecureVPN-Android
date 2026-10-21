@@ -21,6 +21,11 @@ class ProbeCoreLifecycleTest {
         val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         assertNull(android.net.VpnService.prepare(context))
         val events = LinkedBlockingQueue<String>()
+        val stats = LinkedBlockingQueue<Long>()
+        val lanPort = ServerSocket(0).use { it.localPort }
+        val lan = com.vpnapp.vpn.LanShareSettings.read(context).copy(enabled = true, port = lanPort,
+            protocol = com.vpnapp.vpn.LanProxyProtocol.HTTP)
+        fun lanListening() = runCatching { java.net.Socket("127.0.0.1", lanPort).use { true } }.getOrDefault(false)
         val closingPid = java.util.concurrent.atomic.AtomicInteger()
         val endpointState = java.util.concurrent.atomic.AtomicReference<ProbeEndpoint?>()
         fun fakeIp(host: String): String {
@@ -46,6 +51,8 @@ class ProbeCoreLifecycleTest {
         }
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
+                if (intent.action == VpnConnectionService.ACTION_VPN_STATS)
+                    stats.offer(intent.getLongExtra(VpnConnectionService.EXTRA_CONNECTION_TIME, -1))
                 when (intent.getStringExtra(VpnConnectionService.EXTRA_STATUS)) {
                     "CONNECTED" -> endpointState.set(ProbeEndpoint.readFrom(intent))
                     "DISCONNECTED" -> {
@@ -56,7 +63,9 @@ class ProbeCoreLifecycleTest {
                 intent.getStringExtra(VpnConnectionService.EXTRA_STATUS)?.let(events::offer)
             }
         }
-        ContextCompat.registerReceiver(context, receiver, IntentFilter(VpnConnectionService.ACTION_VPN_STATUS), ContextCompat.RECEIVER_NOT_EXPORTED)
+        ContextCompat.registerReceiver(context, receiver, IntentFilter(VpnConnectionService.ACTION_VPN_STATUS).apply {
+            addAction(VpnConnectionService.ACTION_VPN_STATS)
+        }, ContextCompat.RECEIVER_NOT_EXPORTED)
         fun await(status: String) {
             val end = System.nanoTime() + TimeUnit.SECONDS.toNanos(20)
             while (System.nanoTime() < end) {
@@ -70,13 +79,15 @@ class ProbeCoreLifecycleTest {
             fail("Missing status $status")
         }
         val workers = Executors.newCachedThreadPool()
+        val serverJobs = java.util.concurrent.ConcurrentLinkedQueue<java.util.concurrent.Future<*>>()
         val retainedTargets = LinkedBlockingQueue<String>()
-        val server = ServerSocket(0, 16, java.net.InetAddress.getByName("127.0.0.1"))
+        val tlsFixture = com.vpnapp.LocalTlsServer()
+        val server = tlsFixture.server
         val acceptor = thread(isDaemon = true) {
             try {
                 while (!server.isClosed) {
                     val socket = server.accept()
-                    workers.submit {
+                    val serverJob = workers.submit {
                         socket.use {
                             socket.soTimeout = 10000
                             val input = DataInputStream(socket.getInputStream())
@@ -119,6 +130,7 @@ class ProbeCoreLifecycleTest {
                             }
                         }
                     }
+                    serverJobs.add(serverJob)
                 }
             } catch (_: java.net.SocketException) { }
         }
@@ -128,7 +140,13 @@ class ProbeCoreLifecycleTest {
                 events.clear()
                 context.startService(Intent(context, VpnConnectionService::class.java).apply {
                     action = VpnConnectionService.ACTION_CONNECT
+                    putExtra(VpnConnectionService.EXTRA_UI_VISIBLE, true)
+                    lan.writeTo(this)
+                    TunnelDnsSettings(TunnelDns.DEFAULT_URL, true).writeTo(this)
                     putExtra(VpnConnectionService.EXTRA_PROTOCOL, "VLESS")
+                    putExtra(VpnConnectionService.EXTRA_V2RAY_TLS, "tls")
+                    putExtra(VpnConnectionService.EXTRA_V2RAY_SNI, "localhost")
+                    putExtra(VpnConnectionService.EXTRA_SKIP_CERT_VERIFY, true) // Ephemeral loopback certificate only.
                     putExtra(VpnConnectionService.EXTRA_PROFILE_NAME, "Local probe fixture")
                     putExtra(VpnConnectionService.EXTRA_SERVER_IP_INPUT, "127.0.0.1")
                     putExtra(VpnConnectionService.EXTRA_SERVER_PORT, server.localPort)
@@ -174,6 +192,38 @@ class ProbeCoreLifecycleTest {
                     assertNotNull("Restore the real dismissal callback too", restored.deleteIntent)
                     assertTrue("Notification recovery must keep the tunnel alive", vpnReady())
                 }
+                if (round == 0) {
+                    val ready = android.os.SystemClock.elapsedRealtime() + 5000
+                    while (!lanListening() && android.os.SystemClock.elapsedRealtime() < ready) Thread.sleep(50)
+                    assertTrue("Event-driven LAN must start when VPN connects", lanListening())
+                    val lanTarget = fakeIp("probe.invalid")
+                    java.net.Socket("127.0.0.1", lanPort).use { client ->
+                        client.soTimeout = 4000
+                        client.getOutputStream().write("CONNECT $lanTarget:80 HTTP/1.1\r\nHost: $lanTarget:80\r\n\r\n".toByteArray())
+                        val reader = client.getInputStream().bufferedReader()
+                        val responseLine = reader.readLine()
+                        assertTrue("LAN CONNECT: $responseLine", responseLine.contains("200"))
+                        while (reader.readLine().isNotEmpty()) { }
+                        client.getOutputStream().write("GET /geo HTTP/1.1\r\nHost: probe.invalid\r\nConnection: close\r\n\r\n".toByteArray())
+                        val responseBody = reader.readText()
+                        val errors = serverJobs.filter { it.isDone }.mapNotNull { runCatching { it.get() }.exceptionOrNull()?.cause?.toString() }
+                        assertTrue("LAN response=${responseBody.take(80)}; accepted=${serverJobs.size}; server errors=$errors",
+                            responseBody.contains("203.0.113.100"))
+                    }
+                    context.startService(Intent(context, VpnConnectionService::class.java)
+                        .setAction(VpnConnectionService.ACTION_UI_VISIBILITY)
+                        .putExtra(VpnConnectionService.EXTRA_UI_VISIBLE, false))
+                    Thread.sleep(300)
+                    stats.clear()
+                    assertNull("Hidden UI must not receive periodic stats", stats.poll(1600, TimeUnit.MILLISECONDS))
+                    context.startService(Intent(context, VpnConnectionService::class.java)
+                        .setAction(VpnConnectionService.ACTION_REQUEST_STATE)
+                        .putExtra(VpnConnectionService.EXTRA_UI_VISIBLE, true))
+                    val restoredTime = stats.poll(3, TimeUnit.SECONDS)
+                    assertNotNull("Resuming must immediately restore current stats", restoredTime)
+                    assertTrue("Connection duration restarted after hiding UI", restoredTime!! >= 2L)
+                    assertNotNull("Visible UI must resume periodic stats", stats.poll(3, TimeUnit.SECONDS))
+                }
                 // Vary allocation order after reconnect. Applications can retain a previously resolved IP.
                 repeat(round + 1) { fakeIp("noise-$round-$it.invalid") }
                 val mapped = fakeIp("retained-app-cache.invalid")
@@ -204,6 +254,7 @@ class ProbeCoreLifecycleTest {
                 context.startService(Intent(context, VpnConnectionService::class.java).setAction(VpnConnectionService.ACTION_DISCONNECT))
                 await("DISCONNECTED")
                 assertNull(endpointState.get())
+                assertFalse("Disconnect must close LAN; no direct-network fallback", lanListening())
                 if (round == 4) {
                     Thread.sleep(16_000)
                     assertTrue("A stopped VPN must never repost its notice", context
@@ -212,7 +263,7 @@ class ProbeCoreLifecycleTest {
             }
         } finally {
             context.startService(Intent(context, VpnConnectionService::class.java).setAction(VpnConnectionService.ACTION_DISCONNECT))
-            server.close()
+            tlsFixture.close()
             workers.shutdownNow()
             acceptor.join(1000)
             context.unregisterReceiver(receiver)

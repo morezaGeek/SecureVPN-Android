@@ -1,0 +1,13 @@
+
+com.vpnapp.LocalTlsServerTest:.
+com.vpnapp.LastVpnConnectionTest:.
+com.vpnapp.UsageCheckpointTest:.
+com.vpnapp.AdCycleAwaitTest:.
+com.vpnapp.ForcedExitStateTest:.
+com.vpnapp.NetworkFeaturesRuntimeTest:.
+com.vpnapp.NetworkScreensTest:....
+com.vpnapp.vpn.singbox.ProbeCoreLifecycleTest:.
+
+Time: 57.955
+
+OK (11 tests)

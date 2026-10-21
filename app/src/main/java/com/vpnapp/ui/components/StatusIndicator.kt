@@ -3,7 +3,7 @@ package com.vpnapp.ui.components
 import androidx.compose.animation.core.*
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
-import androidx.compose.foundation.clickable
+import com.vpnapp.ui.components.appClickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -66,7 +66,7 @@ fun ConnectionStatusIndicator(
 fun CompactTrafficRow(stats: ConnectionStats, modifier: Modifier = Modifier) {
     var showDetails by remember { mutableStateOf(false) }
     Row(modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(CurrentCard)
-        .clickable(onClickLabel = "Traffic details") { showDetails = true }
+        .appClickable(onClickLabel = "Traffic details") { showDetails = true }
         .padding(horizontal = 10.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
         CompactTrafficValue(Icons.Default.ArrowDownward, "Download", formatSpeed(stats.downloadSpeed),

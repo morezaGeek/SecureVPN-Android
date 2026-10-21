@@ -1,4 +1,5 @@
 import java.util.Properties
+import java.io.File
 
 plugins {
     id("com.android.application")
@@ -22,8 +23,8 @@ android {
         applicationId = if (previewBuild) "com.rahanetmci.securevpn.preview" else "com.rahanetmci.securevpn"
         minSdk = 26
         targetSdk = 36
-        versionCode = 10
-        versionName = if (previewBuild) "1.1.5-test" else "1.1.5"
+        versionCode = 11
+        versionName = if (previewBuild) "1.1.6-test" else "1.1.6"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders["admobAppId"] = "ca-app-pub-3940256099942544~3347511713"
@@ -99,6 +100,26 @@ kotlin {
     compilerOptions {
         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
     }
+}
+
+// Generate a loopback identity only for instrumentation APKs.
+// A software key avoids emulator AndroidKeyStore signing failures; it never enters release assets or Git.
+val testTlsAssets = layout.buildDirectory.dir("generated/androidTestTls")
+android.sourceSets.getByName("androidTest").assets.srcDir(testTlsAssets)
+val generateTestTlsIdentity by tasks.registering(Exec::class) {
+    val identity = testTlsAssets.get().file("loopback-test.p12").asFile
+    outputs.file(identity)
+    onlyIf { !identity.isFile }
+    doFirst { identity.parentFile.mkdirs() }
+    val executable = if (System.getProperty("os.name").startsWith("Windows")) "keytool.exe" else "keytool"
+    commandLine(File(System.getProperty("java.home"), "bin/$executable").absolutePath,
+        "-genkeypair", "-alias", "loopback", "-keyalg", "EC", "-groupname", "secp256r1",
+        "-sigalg", "SHA256withECDSA", "-storetype", "PKCS12", "-keystore", identity.absolutePath,
+        "-storepass", "local-test-only", "-keypass", "local-test-only", "-dname", "CN=localhost",
+        "-ext", "SAN=dns:localhost,ip:127.0.0.1", "-validity", "3650", "-noprompt")
+}
+tasks.matching { it.name.startsWith("merge") && it.name.endsWith("AndroidTestAssets") }.configureEach {
+    dependsOn(generateTestTlsIdentity)
 }
 
 tasks.matching { it.name in setOf("bundleRelease", "assembleRelease") }.configureEach {

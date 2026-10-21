@@ -3,7 +3,7 @@ package com.vpnapp.ui.screens
 import android.content.Intent
 import android.provider.Settings
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import com.vpnapp.ui.components.appClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -211,7 +211,7 @@ fun SettingsScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { expanded = !expanded }
+                        .appClickable {expanded = !expanded }
                         .padding(12.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
@@ -263,7 +263,7 @@ fun SettingsScreen(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable { 
+                                    .appClickable {
                                         ThemeState.themeMode = mode
                                         ThemeState.saveTheme(context)  // Save theme permanently
                                         expanded = false
@@ -327,7 +327,7 @@ fun SettingsScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { expanded = !expanded }
+                        .appClickable {expanded = !expanded }
                         .padding(12.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
@@ -379,7 +379,7 @@ fun SettingsScreen(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable { 
+                                    .appClickable {
                                         onBufferSizeChange(size)
                                         expanded = false
                                     }
@@ -560,7 +560,7 @@ private fun SettingsItem(
             .fillMaxWidth()
             .then(
                 if (onClick != null) 
-                    Modifier.clickable(onClick = onClick) 
+                    Modifier.appClickable(onClick = onClick)
                 else 
                     Modifier
             )
@@ -616,7 +616,7 @@ private fun SettingsItem(
 
 @Composable
 private fun clickable(onClick: () -> Unit): Modifier {
-    return Modifier.clickable(onClick = onClick)
+    return Modifier.appClickable(onClick = onClick)
 }
 
 

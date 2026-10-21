@@ -9,6 +9,12 @@ data class AdCycleState(
 /** Counts complete successful sessions, not button taps or repeated status broadcasts. */
 object AdCyclePolicy {
     const val COOLDOWN_MILLIS = 120_000L
+    /** null means wait for a cycle-change event; otherwise schedule exactly one cooldown. */
+    fun delayUntilEligible(state: AdCycleState, now: Long): Long? {
+        if (state.successfulSession != 0L || state.completedCycles < 2) return null
+        if (state.lastAttemptMillis == 0L) return 0L
+        return (COOLDOWN_MILLIS - (now - state.lastAttemptMillis)).coerceIn(0L, COOLDOWN_MILLIS)
+    }
     fun connected(state: AdCycleState, session: Long): AdCycleState =
         if (session > 0) state.copy(successfulSession = session) else state
 

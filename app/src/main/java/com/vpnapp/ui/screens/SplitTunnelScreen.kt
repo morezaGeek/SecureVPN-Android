@@ -3,7 +3,7 @@ package com.vpnapp.ui.screens
 import android.graphics.drawable.Drawable
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import com.vpnapp.ui.components.appClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -187,7 +187,7 @@ private fun AppItem(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { onToggle(!isExcluded) }
+                .appClickable { onToggle(!isExcluded) }
                 .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {

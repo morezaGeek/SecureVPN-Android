@@ -2,6 +2,13 @@ package com.vpnapp.data
 
 import android.content.ContentValues
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.content.BroadcastReceiver
+import androidx.core.content.ContextCompat
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.conflate
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import java.time.Instant
@@ -12,6 +19,34 @@ data class UsageDay(val date: LocalDate, val downloaded: Long, val uploaded: Lon
 
 /** Service-owned accounting. SQLite transactions survive UI/process recreation without double counting. */
 class UsageHistory(context: Context, databaseName: String = "vpn-usage.db") : SQLiteOpenHelper(context, databaseName, null, 1) {
+    private val application = context.applicationContext
+    private var lastSession: String? = null
+    private var lastRx = -1L
+    private var lastTx = -1L
+    private var lastAt = 0L
+    private var lastPrunedAt = 0L
+    companion object {
+        const val ACTION_CHANGED = "com.vpnapp.USAGE_HISTORY_CHANGED"
+        private const val EXTRA_DAYS = "changed_days"
+        /** Package-scoped cross-process invalidation; no polling or traffic details. */
+        fun changes(context: Context) = callbackFlow<Set<LocalDate>?> {
+            val application = context.applicationContext
+            val receiver = object : BroadcastReceiver() {
+                override fun onReceive(context: Context?, intent: Intent?) {
+                    val changed = if (intent?.action == ACTION_CHANGED)
+                        intent.getStringArrayListExtra(EXTRA_DAYS)?.mapNotNull { runCatching { LocalDate.parse(it) }.getOrNull() }?.toSet()
+                    else null
+                    trySend(changed)
+                }
+            }
+            ContextCompat.registerReceiver(application, receiver, IntentFilter().apply {
+                addAction(ACTION_CHANGED); addAction(Intent.ACTION_DATE_CHANGED)
+                addAction(Intent.ACTION_TIME_CHANGED); addAction(Intent.ACTION_TIMEZONE_CHANGED)
+            }, ContextCompat.RECEIVER_NOT_EXPORTED)
+            trySend(null)
+            awaitClose { application.unregisterReceiver(receiver) }
+        }.conflate()
+    }
     init { setWriteAheadLoggingEnabled(true) }
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE usage_day(day TEXT PRIMARY KEY, rx INTEGER NOT NULL, tx INTEGER NOT NULL)")
@@ -19,8 +54,16 @@ class UsageHistory(context: Context, databaseName: String = "vpn-usage.db") : SQ
     }
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
 
-    @Synchronized fun record(session: String, rx: Long, tx: Long, now: Long = System.currentTimeMillis()) {
-        if (rx < 0 || tx < 0) return
+    @Synchronized fun record(session: String, rx: Long, tx: Long, now: Long = System.currentTimeMillis()): Boolean {
+        if (rx < 0 || tx < 0) return false
+        // Still remember the latest idle sample boundary without opening a write transaction.
+        if (lastSession == session && rx <= lastRx && tx <= lastTx) {
+            lastAt = maxOf(lastAt, now)
+            return false
+        }
+        var changedDays = emptySet<LocalDate>()
+        var committedRx = 0L
+        var committedTx = 0L
         val db = writableDatabase
         db.beginTransaction()
         try {
@@ -29,17 +72,30 @@ class UsageHistory(context: Context, databaseName: String = "vpn-usage.db") : SQ
                 if(it.moveToFirst()) { oldRx=it.getLong(0); oldTx=it.getLong(1); previous=it.getLong(2) }
             }
             // A stale status packet must not subtract traffic or cause the next packet to double count.
+            if (lastSession == session) previous = maxOf(previous, lastAt)
             val nextRx=maxOf(oldRx,rx); val nextTx=maxOf(oldTx,tx)
-            for (part in splitUsage(previous, now, nextRx-oldRx, nextTx-oldTx)) {
+            committedRx = nextRx; committedTx = nextTx
+            val parts = splitUsage(previous, now, nextRx-oldRx, nextTx-oldTx)
+                .filter { it.downloaded != 0L || it.uploaded != 0L }
+            changedDays = parts.map { it.date }.toSet()
+            for (part in parts) {
                 db.execSQL("INSERT OR IGNORE INTO usage_day(day,rx,tx) VALUES(?,0,0)", arrayOf(part.date.toString()))
                 db.execSQL("UPDATE usage_day SET rx=rx+?,tx=tx+? WHERE day=?", arrayOf<Any>(part.downloaded,part.uploaded,part.date.toString()))
             }
             db.insertWithOnConflict("usage_session",null,ContentValues().apply {
                 put("id",session);put("rx",nextRx);put("tx",nextTx);put("at",maxOf(previous,now))
             },SQLiteDatabase.CONFLICT_REPLACE)
-            db.execSQL("DELETE FROM usage_session WHERE at < ?",arrayOf(now-7L*24*3600*1000))
+            if (lastPrunedAt == 0L || now - lastPrunedAt >= 24L*3600*1000) {
+                db.execSQL("DELETE FROM usage_session WHERE at < ? AND id != ?",arrayOf<Any>(now-7L*24*3600*1000, session))
+            }
             db.setTransactionSuccessful()
         } finally { db.endTransaction() }
+        lastAt = if (lastSession == session) maxOf(lastAt, now) else now
+        lastSession = session; lastRx = committedRx; lastTx = committedTx
+        if (lastPrunedAt == 0L || now - lastPrunedAt >= 24L*3600*1000) lastPrunedAt = now
+        if (changedDays.isNotEmpty()) application.sendBroadcast(Intent(ACTION_CHANGED).setPackage(application.packageName)
+            .putStringArrayListExtra(EXTRA_DAYS, ArrayList(changedDays.map { it.toString() })))
+        return changedDays.isNotEmpty()
     }
 
     fun days(from: LocalDate, to: LocalDate): List<UsageDay> = readableDatabase.rawQuery(

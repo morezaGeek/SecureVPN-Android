@@ -1,3 +1,11 @@
+## Android 1.1.6 / code 11 — Battery and lifecycle fixes — 2026-10-21
+
+- Pre-change private GitHub backup verified: bfe55bc, branch codex/backup-android-1.1.5-before-battery-20261021; matching libbox AAR and hashes attached to the private backup release. Implemented source is on codex/android-battery-lifecycle-1.1.6.
+- Added monotonic session duration, current-profile Always-on restoration, a whole-worker4-second shutdown deadline, cancellable probe sockets,30-second/final history checkpoints and event-driven history/ad eligibility. UI telemetry is lifecycle-aware; transfer speed uses actual elapsed intervals. Passive network callbacks replace routine LAN rescans;128-tunnel capacity and VPN-only relay policy are retained. Fixed explicit-ripple UI compatibility exposed by connected-screen tests.
+- Verification:91 JVM tests and11 selected Android acceptance tests passed on the dedicated16KB emulator. Acceptance includes five encrypted VLESS/TLS cycles, LAN/FakeIP relay, notification restoration, background/resume stats, profile/history/ad cases. Repaired the test-only TLS identity generation without weakening production encryption; no identity enters Git or the release APK.
+- Final minified Test APK upgraded the existing preview without uninstall/data clear; home/history/Yesterday and crash buffer checked. Previous Test signing certificate matches; zipalign16KB/native LOAD+RELRO checks passed; native bytes unchanged from1.1.5 and symbols reused only after equality verification. APK, exact mapping, symbols, tests, hashes and verification are in SecureVPN-Updates-2026-10-21-1.1.6. Details: Android-1.1.6-Resume.md (source copy under docs/).
+- This is a preview/Test delivery; Google Play production remains separate. No physical energy savings or overnight stability claimed. CPU/Wi-Fi locks, DPD, internal native status cadence and notification watchdog remain pending real-phone measurements. No production AAB/Play upload; Windows source and legacy root app unchanged.
+
 ## Android — Independent audit addendum — 2026-10-21
 
 - Added source-verified notes on wall-clock duration, shutdown I/O outside the native deadline, history polling while retained in composition, and foreground ad-eligibility file polling. Risks are not claimed as reproduced device failures.

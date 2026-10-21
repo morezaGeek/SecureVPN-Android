@@ -72,7 +72,7 @@ private fun ConnectionAdBanner() {
     }
     LaunchedEffect(Unit) {
         try {
-            while (!withContext(Dispatchers.IO) { store.reserve(System.currentTimeMillis()) }) delay(1000)
+            store.awaitReservation()
             val adView = AdView(context).apply { adUnitId = com.vpnapp.BuildConfig.ADMOB_BANNER_ID; setAdSize(AdSize.BANNER) }
             view = adView
             adView.adListener = object : AdListener() {

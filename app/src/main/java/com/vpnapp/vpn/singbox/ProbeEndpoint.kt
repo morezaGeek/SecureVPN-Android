@@ -30,9 +30,11 @@ data class ProbeEndpoint(val port: Int, val username: String, val password: Stri
         }
     }
 
-    fun connect(host: String, destinationPort: Int): Socket {
+    fun connect(host: String, destinationPort: Int): Socket = connect(host, destinationPort, {})
+    fun connect(host: String, destinationPort: Int, registerSocket: (Socket) -> Unit): Socket {
         val socket = Socket()
         try {
+            registerSocket(socket)
             socket.soTimeout = 5000
             socket.tcpNoDelay = true
             socket.connect(InetSocketAddress("127.0.0.1", port), 3000)

@@ -14,12 +14,14 @@ class ProbeHttp private constructor(private val socket: Socket, private val url:
     private val input = BufferedInputStream(socket.getInputStream())
 
     companion object {
-        fun open(url: URL, connect: (String, Int) -> Socket): ProbeHttp {
+        fun open(url: URL, connect: (String, Int) -> Socket): ProbeHttp = open(url, {}, connect)
+        fun open(url: URL, registerSocket: (Socket) -> Unit, connect: (String, Int) -> Socket): ProbeHttp {
             val raw = connect(url.host, if (url.port > 0) url.port else url.defaultPort)
             try {
+                registerSocket(raw)
                 val socket = if (url.protocol == "https") {
                     ((SSLSocketFactory.getDefault() as SSLSocketFactory).createSocket(raw, url.host,
-                        if (url.port > 0) url.port else 443, true) as SSLSocket).apply {
+                        if (url.port > 0) url.port else 443, true) as SSLSocket).also(registerSocket).apply {
                         soTimeout = 5000
                         sslParameters = sslParameters.apply { endpointIdentificationAlgorithm = "HTTPS" }
                         startHandshake()
