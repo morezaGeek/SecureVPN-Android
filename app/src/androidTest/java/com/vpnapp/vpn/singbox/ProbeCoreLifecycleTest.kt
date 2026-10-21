@@ -154,6 +154,15 @@ class ProbeCoreLifecycleTest {
                     putExtra(VpnConnectionService.EXTRA_MTU, if (round % 2 == 0) 1280 else 1400)
                 })
                 await("CONNECTED")
+                if (com.vpnapp.BuildConfig.CPU_WAKELOCK_EXPERIMENT) {
+                    val powerDump = android.os.ParcelFileDescriptor.AutoCloseInputStream(
+                        instrumentation.uiAutomation.executeShellCommand("dumpsys power")
+                    ).bufferedReader().use { it.readText() }
+                    assertFalse("Connected experimental VPN must release its CPU wake lock", powerDump.lineSequence().any {
+                        it.trimStart().startsWith("PARTIAL_WAKE_LOCK") && it.contains("SecureVPN::VpnWakeLock") &&
+                            it.contains("pkg=${context.packageName}")
+                    })
+                }
                 val manager = context.getSystemService(android.net.ConnectivityManager::class.java)
                 val readyUntil = android.os.SystemClock.elapsedRealtime() + 5_000
                 fun vpnReady() = manager.getNetworkCapabilities(manager.activeNetwork)

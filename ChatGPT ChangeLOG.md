@@ -1,3 +1,9 @@
+## Android 1.1.7-test-cpu / code12 — CPU wake-lock experiment — 2026-10-21
+
+- Test-only build flag bounds setup CPU wake lock to60seconds and releases it when connected. Other battery/network controls remain unchanged; flag is rejected for non-preview builds. Baseline1.1.6 is preserved in commit8f79a81.
+-91 JVM and11 selected Android16KB acceptance tests passed, including absence of the CPU lock in five encrypted VLESS/TLS cycles, existing notification recovery, LAN and telemetry checks. Signature/16KB alignment passed; native bytes unchanged with matching symbols.
+- Installed signed final APK over the physical phone's Test1.1.6 without data clear. Existing selected profile connected; foreground notification present and app CPU lock absent. User is now testing screen-off stability/consumption; no energy improvement claimed yet. No production Play upload. Details: docs/Android-1.1.7-CPU-Experiment.md in the Android repository.
+
 ## Android 1.1.6 / code 11 — Battery and lifecycle fixes — 2026-10-21
 
 - Pre-change private GitHub backup verified: bfe55bc, branch codex/backup-android-1.1.5-before-battery-20261021; matching libbox AAR and hashes attached to the private backup release. Implemented source is on codex/android-battery-lifecycle-1.1.6.

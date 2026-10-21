@@ -13,6 +13,8 @@ val uploadKeyProperties = Properties().apply {
 }
 // A phone-test APK can coexist with the Google Play installation and uses demo ads.
 val previewBuild = providers.gradleProperty("previewBuild").orNull == "true"
+val cpuWakeLockExperiment = providers.gradleProperty("cpuWakeLockExperiment").orNull == "true"
+check(!cpuWakeLockExperiment || previewBuild) { "CPU wake-lock experiment is restricted to the Test package" }
 
 android {
     namespace = "com.vpnapp"
@@ -23,8 +25,9 @@ android {
         applicationId = if (previewBuild) "com.rahanetmci.securevpn.preview" else "com.rahanetmci.securevpn"
         minSdk = 26
         targetSdk = 36
-        versionCode = 11
-        versionName = if (previewBuild) "1.1.6-test" else "1.1.6"
+        versionCode = if (cpuWakeLockExperiment) 12 else 11
+        versionName = if (cpuWakeLockExperiment) "1.1.7-test-cpu" else if (previewBuild) "1.1.6-test" else "1.1.6"
+        buildConfigField("boolean", "CPU_WAKELOCK_EXPERIMENT", cpuWakeLockExperiment.toString())
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders["admobAppId"] = "ca-app-pub-3940256099942544~3347511713"
