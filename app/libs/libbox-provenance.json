@@ -31,5 +31,7 @@
     ]
   ],
   "sha256": "b6d7e90f8b00f5f0a682698e1b5cf504fc6ae92a368211370cfe55d401321188",
-  "note": "Rebuilt from source for every ABI with explicit PT_LOAD/RELRO alignment; no ELF header patching. Unused Naive/Tailscale/WireGuard/OpenVPN build tags omitted. Matching libbox symbols retained separately."
+  "note": "Rebuilt from source for every ABI with explicit PT_LOAD/RELRO alignment; no ELF header patching. Unused Naive/Tailscale/WireGuard/OpenVPN build tags omitted. Matching libbox symbols retained separately.",
+  "release": "https://github.com/morezaGeek/SecureVPN-Android/releases/tag/v1.1.7",
+  "asset": "libbox-securevpn-1.1.7.aar"
 }

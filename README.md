@@ -1,20 +1,42 @@
-# SecureVPN Android
+# SecureVPN for Android
 
-Private Android source snapshot. Kotlin / Jetpack Compose; Android 8.0+.
-Users import their own profiles; no prepared server configuration is bundled.
+Android VPN client for user-supplied V2Ray-compatible, SSTP and OpenConnect profiles. No VPN servers, credentials or subscriptions are bundled. Android 8.0 (API 26) or later.
+
+## Download
+
+Get the signed **SecureVPN 1.1.7 (12)** APK from [GitHub Releases](https://github.com/morezaGeek/SecureVPN-Android/releases/latest). The universal APK includes ARM and x86 architectures. Verify its SHA-256 against `SHA256SUMS.txt`.
+
+This APK uses the existing project release/upload certificate. Google Play may use a different app-signing certificate. If Android reports incompatible signatures, export your profiles before uninstalling the Play version, then install this APK and import them. Future GitHub updates retain the same signing certificate and increase versionCode. Signing keys and passwords are never included in this repository.
+
+## Features
+
+- Import your own profiles and subscriptions, including QR codes.
+- Profile sorting and cancellable parallel latency checks.
+- Custom DNS, split tunneling, usage history and LAN HTTP/SOCKS5 proxy sharing.
+- Connection notifications and Android always-on / block-without-VPN integration.
+- Light and dark themes. Production builds include AdMob advertising.
+
+Version 1.1.7 improves connection timers, traffic statistics, LAN proxy reliability and CPU power management. The setup CPU wake lock releases after successful connection; no quantified battery saving is claimed.
 
 ## Build
 
-Install JDK17 and Android SDK35/build-tools. Set JAVA_HOME and your local SDK path in local.properties.
-Run `python scripts/fetch-libbox.py`, then `./gradlew :app:testDebugUnitTest :app:assembleRelease`.
-The pinned libbox AAR is fetched with SHA256 verification; it is larger than GitHub's normal file limit and is not committed.
-Native OpenConnect/stoken binaries already used by this app are retained; distribution licensing and 16KB support must be addressed before a store release.
+Install JDK 17 and Android SDK 36. Set the SDK location in an ignored `local.properties` file.
 
-Release APK signing currently uses the existing Android debug key for compatibility with local phone tests. This is not Play signing.
-Do not commit upload keystores, passwords, access tokens, user profile databases or exported subscriptions.
+```sh
+python scripts/fetch-libbox.py
+./gradlew :app:testDebugUnitTest :app:assembleDebug
+```
 
-History begins with a sanitized 1.3.68 source baseline, followed by the 1.0 release changes. Earlier Android commit history was not present in the Windows repository.
+The fetch script downloads the pinned native AAR from this project's release and verifies SHA-256. Native source provenance and rebuild instructions are in `app/libs/libbox-provenance.json`, `NATIVE_16KB_BUILD.md` and `scripts/build-libbox-16kb.ps1`. Native components retain their upstream licensing requirements; refer to the linked source repositories.
 
-Current display version: **1.0.1**, versionCode **200**. See ANDROID_PLAY_PREPARATION.md for confirmed store blockers and ChatGPT ChangeLOG.md for changes and test evidence.
+Release signing uses an untracked `key.properties` with `storeFile`, `storePassword`, `keyAlias` and `keyPassword`. Without it, release output is unsigned. Use your own signing identity for independent builds and never commit keystores or passwords.
 
-Ads use Google demo IDs only. See ANDROID_ADS.md for lifecycle policy and required SDK/consent upgrades before production. For four-ABI packaging on a constrained build host, use --max-workers=2 and -Dorg.gradle.jvmargs=-Xmx4096m.
+```sh
+./gradlew :app:assembleRelease
+```
+
+## Verification
+
+The 1.1.7 release passed 91 JVM tests and 11 selected Android acceptance tests on a 16 KB emulator, plus minified APK startup, signature and alignment checks. See `docs/verification/android-play-1.1.7.json`. Physical connection stability was also confirmed by the maintainer; performance depends on network, profile and device.
+
+[Privacy policy](https://securevpn.rahanetmci.com/privacy/) | [Support](https://securevpn.rahanetmci.com/support/)

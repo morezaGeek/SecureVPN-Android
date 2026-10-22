@@ -1,3 +1,9 @@
+## 2026-10-22 — GitHub 1.1.7 distribution
+
+- Publish the tested 1.1.7/code12 APK with the existing release/upload signature; no app behavior or version changes.
+- Refresh public README, signing/migration instructions and native dependency download provenance.
+- Attach APK, native build dependency and SHA-256 checksums to v1.1.7.
+
 ## Android Play1.1.7 / code12 — Signed release prepared — 2026-10-21
 
 - User confirmed1.1.7 CPU experiment worked and explicitly selected it for Play. Promoted the same bounded setup-only CPU lock behavior to standard builds; production version1.1.7/code12, package com.rahanetmci.securevpn, existing live ad IDs. The earlier1.1.6 release preparation is superseded.
