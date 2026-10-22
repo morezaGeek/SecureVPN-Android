@@ -4,7 +4,7 @@ Android VPN client for user-supplied V2Ray-compatible, SSTP and OpenConnect prof
 
 ## Download
 
-Get the signed **SecureVPN 1.1.7 (12)** APK from [GitHub Releases](https://github.com/morezaGeek/SecureVPN-Android/releases/latest). The universal APK includes ARM and x86 architectures. Verify its SHA-256 against `SHA256SUMS.txt`.
+Get the signed **SecureVPN 1.1.7 (12)** APK from [GitHub Releases](https://github.com/morezaGeek/SecureVPN-Android/releases/latest). The universal APK includes ARM and x86 architectures. Choose `arm64-v8a` for most current phones, `armeabi-v7a` for older 32-bit ARM phones, or `x86` / `x86_64` for matching Intel devices and emulators. If unsure, use the universal APK. Architecture-specific checksums are in `SHA256SUMS-architectures.txt`; universal APK checksums are in `SHA256SUMS.txt`.
 
 This APK uses the existing project release/upload certificate. Google Play may use a different app-signing certificate. If Android reports incompatible signatures, export your profiles before uninstalling the Play version, then install this APK and import them. Future GitHub updates retain the same signing certificate and increase versionCode. Signing keys and passwords are never included in this repository.
 
@@ -33,6 +33,8 @@ Release signing uses an untracked `key.properties` with `storeFile`, `storePassw
 
 ```sh
 ./gradlew :app:assembleRelease
+# Optional: one standalone signed APK per architecture
+./gradlew -PsplitApks=true :app:assembleRelease
 ```
 
 ## Verification

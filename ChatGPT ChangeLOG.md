@@ -1,3 +1,9 @@
+## 2026-10-22 — Architecture-specific APK distribution
+
+- Add opt-in `-PsplitApks=true` packaging for arm64-v8a, armeabi-v7a, x86 and x86_64.
+- Retain version 1.1.7/code12, existing release signature and universal APK.
+- Verify per-ABI native contents, APK signatures, alignment and checksums before publication.
+
 ## 2026-10-22 — GitHub 1.1.7 distribution
 
 - Publish the tested 1.1.7/code12 APK with the existing release/upload signature; no app behavior or version changes.

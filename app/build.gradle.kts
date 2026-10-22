@@ -36,6 +36,16 @@ android {
 
     }
 
+    // Opt-in distribution APKs; the default APK/AAB build stays universal.
+    splits {
+        abi {
+            isEnable = providers.gradleProperty("splitApks").orNull == "true"
+            reset()
+            include("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
+            isUniversalApk = false
+        }
+    }
+
     signingConfigs {
         create("upload") {
             if (uploadKeyPropertiesFile.isFile) {

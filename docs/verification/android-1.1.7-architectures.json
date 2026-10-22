@@ -1,0 +1,50 @@
+[
+  {
+    "abi": "arm64-v8a",
+    "file": "SecureVPN-1.1.7-arm64-v8a.apk",
+    "bytes": 30747233,
+    "sha256": "6188e6044b1544301d98b2ec0c5e05b217ef481d4dade850710750793a64d7af",
+    "certificate": "1dba6f54f5d0e8c70480c26fe373447d470f659821c6146b7329ad613880b5d4",
+    "signature_verified": true,
+    "alignment_16kb_verified": true,
+    "native_matches_tested_universal": true,
+    "dex_matches_tested_universal": true,
+    "package_version_verified": true
+  },
+  {
+    "abi": "armeabi-v7a",
+    "file": "SecureVPN-1.1.7-armeabi-v7a.apk",
+    "bytes": 31162971,
+    "sha256": "b794e0732eb5bd89ff72a9f5f5ac14ab49db41ade92a2c5fee4407e0bd677d64",
+    "certificate": "1dba6f54f5d0e8c70480c26fe373447d470f659821c6146b7329ad613880b5d4",
+    "signature_verified": true,
+    "alignment_16kb_verified": true,
+    "native_matches_tested_universal": true,
+    "dex_matches_tested_universal": true,
+    "package_version_verified": true
+  },
+  {
+    "abi": "x86",
+    "file": "SecureVPN-1.1.7-x86.apk",
+    "bytes": 33255299,
+    "sha256": "a92566ecf29684037a1363e1d83d2f36098185abf33c4c677439fb37e936bd7c",
+    "certificate": "1dba6f54f5d0e8c70480c26fe373447d470f659821c6146b7329ad613880b5d4",
+    "signature_verified": true,
+    "alignment_16kb_verified": true,
+    "native_matches_tested_universal": true,
+    "dex_matches_tested_universal": true,
+    "package_version_verified": true
+  },
+  {
+    "abi": "x86_64",
+    "file": "SecureVPN-1.1.7-x86_64.apk",
+    "bytes": 32487424,
+    "sha256": "26a4fdcdac3e1ed563c070623bba216f220fa45c5b7d76aa9a11bf362200ae89",
+    "certificate": "1dba6f54f5d0e8c70480c26fe373447d470f659821c6146b7329ad613880b5d4",
+    "signature_verified": true,
+    "alignment_16kb_verified": true,
+    "native_matches_tested_universal": true,
+    "dex_matches_tested_universal": true,
+    "package_version_verified": true
+  }
+]
