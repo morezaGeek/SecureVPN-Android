@@ -1,13 +1,12 @@
 package com.vpnapp.ui.components
 
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.*
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
-import androidx.compose.ui.draw.scale
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
-import com.vpnapp.ui.components.appClickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -17,231 +16,144 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.vpnapp.data.ConnectionState
 import com.vpnapp.data.VpnProfile
 import com.vpnapp.data.VpnProtocol
-import com.vpnapp.data.XHttpModePolicy
 import com.vpnapp.ui.theme.*
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ProfileCard(
     profile: VpnProfile,
     isSelected: Boolean,
     connectionState: ConnectionState,
     onSelect: () -> Unit,
-    onEdit: () -> Unit,
-    onDelete: () -> Unit,
+    onShowActions: () -> Unit,
     modifier: Modifier = Modifier,
+    isActionTarget: Boolean = false,
     isTestingLatency: Boolean = false,
-    isLatencyQueued: Boolean = false,
-    onShare: (() -> Unit)? = null
+    isLatencyQueued: Boolean = false
 ) {
-    val isConnecting = connectionState == ConnectionState.CONNECTING
-    val isConnected = connectionState == ConnectionState.CONNECTED && isSelected
-    val interactionSource = remember { MutableInteractionSource() }
-    val cardColor by animateColorAsState(if (isSelected) CurrentCard else CurrentCard.copy(alpha = 0.85f),
-        tween(180), label = "profileFill")
-    
+    val dark = isAppInDarkTheme()
+    val ink = if (dark) Color.White else Color.Black
     val borderColor by animateColorAsState(
         targetValue = when {
-            isConnected -> StatusConnected
-            isConnecting && isSelected -> StatusConnecting
+            isActionTarget -> ink
+            isSelected && connectionState == ConnectionState.CONNECTED -> StatusConnected
+            isSelected && connectionState == ConnectionState.CONNECTING -> StatusConnecting
             isSelected -> CurrentAccent
-            else -> CurrentSurfaceVariant
+            else -> if (dark) Color(0xFF414141) else Color(0xFFBDBDBD)
         },
-        label = "borderColor"
+        label = "profileBorder"
     )
-    
-    val (protocolIcon, protocolColor) = when (profile.protocol) {
-        VpnProtocol.OPENCONNECT -> Icons.Default.VpnLock to CurrentAccent
-        VpnProtocol.SSTP -> Icons.Default.Security to SstpColor
-        VpnProtocol.VLESS -> Icons.Default.Share to MaterialTheme.colorScheme.tertiary
-        VpnProtocol.VMESS -> Icons.Default.Settings to MaterialTheme.colorScheme.tertiary // Hub -> Settings
-        VpnProtocol.TROJAN -> Icons.Default.Lock to MaterialTheme.colorScheme.error // Shield -> Lock
-        VpnProtocol.SHADOWSOCKS -> Icons.Default.Info to MaterialTheme.colorScheme.primary // Visibility -> Info
-        VpnProtocol.HYSTERIA2 -> Icons.Default.Share to MaterialTheme.colorScheme.secondary // Or Bolt/FlashOn
+    val mono = FontFamily.Monospace
+    val protocolText = when (profile.protocol) {
+        VpnProtocol.VLESS, VpnProtocol.VMESS, VpnProtocol.TROJAN -> {
+            val network = profile.v2rayNetwork.uppercase()
+            val security = when (profile.v2rayTls) {
+                "tls" -> "TLS"
+                "reality" -> "REALITY"
+                else -> ""
+            }
+            "${profile.protocol.displayName} $network $security".trim()
+        }
+        else -> profile.protocol.displayName
+    }
+    val latencyLabel = when {
+        isTestingLatency -> "Testing…"
+        isLatencyQueued -> "Queued"
+        else -> profile.latency?.let { if (it < 0) "Failed" else "${it}ms" }
+    }
+    val latencyColor = when {
+        isTestingLatency || isLatencyQueued -> ink
+        else -> profile.latency?.let {
+            when {
+                it < 0 -> if (dark) Color(0xFFFF6B6B) else Color(0xFFB3261E)
+                it < 100 -> if (dark) Color(0xFF64B5FF) else Color(0xFF0056B3)
+                it <= 160 -> if (dark) Color(0xFF62DC86) else Color(0xFF17672D)
+                it <= 270 -> if (dark) Color(0xFFFFD54F) else Color(0xFF735700)
+                else -> if (dark) Color(0xFFFF6B6B) else Color(0xFFB3261E)
+            }
+        } ?: ink
     }
 
-    
-    Card(
+    Surface(
         modifier = modifier.fillMaxWidth(),
-        interactionSource = interactionSource,
-        shape = RoundedCornerShape(28.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = cardColor
-        ),
-        border = CardDefaults.outlinedCardBorder().copy(
-            brush = Brush.horizontalGradient(
-                colors = if (isSelected) listOf(borderColor, borderColor.copy(alpha = 0.5f))
-                else listOf(CurrentSurfaceVariant, CurrentSurfaceVariant)
-            )
-        ),
-        onClick = onSelect
+        shape = RectangleShape,
+        color = if (dark) Color.Black else Color.White,
+        border = BorderStroke(if (isActionTarget || isSelected) 2.dp else 1.dp, borderColor)
     ) {
         Row(
             modifier = Modifier
-                .padding(16.dp)
-                .fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+                .semantics { selected = isSelected }
+                .combinedClickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = LocalIndication.current,
+                    role = Role.Button,
+                    onClickLabel = "Select profile",
+                    onLongClickLabel = "Show profile actions",
+                    onClick = onSelect,
+                    onLongClick = onShowActions
+                )
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.Top
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.weight(1f)
-            ) {
-                // Protocol icon with background
-                Box(
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(protocolColor.copy(alpha = 0.15f)),
-                    contentAlignment = Alignment.Center
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = profile.name,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontFamily = mono,
+                    fontWeight = FontWeight.SemiBold,
+                    color = ink,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = "${profile.serverAddress}:${profile.port}",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = mono,
+                    color = ink,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = protocolText,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontFamily = mono,
+                    color = ink,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            if (latencyLabel != null) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Icon(
-                        imageVector = protocolIcon,
-                        contentDescription = profile.protocol.displayName,
-                        tint = protocolColor,
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
-                
-                Column(modifier = Modifier.weight(1f)) {
+                    if (isTestingLatency) {
+                        CircularProgressIndicator(Modifier.size(12.dp), strokeWidth = 1.5.dp, color = ink)
+                    }
                     Text(
-                        text = profile.name,
-                        style = MaterialTheme.typography.titleSmall,
-                        color = CurrentTextPrimary,
+                        latencyLabel,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontFamily = mono,
                         fontWeight = FontWeight.SemiBold,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    
-                    Text(
-                        text = "${profile.serverAddress}:${profile.port}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = CurrentTextMuted,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        val protocolText = if (profile.protocol in listOf(VpnProtocol.VLESS, VpnProtocol.VMESS, VpnProtocol.TROJAN)) {
-                            val net = profile.v2rayNetwork.uppercase()
-                            val sec = if (profile.v2rayTls == "tls") "TLS" else if (profile.v2rayTls == "reality") "REALITY" else ""
-                            "${profile.protocol.displayName} $net $sec".trim()
-                        } else {
-                            profile.protocol.displayName
-                        }
-                        
-                        Text(
-                            text = protocolText,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = protocolColor
-                        )
-                        
-                        if (isTestingLatency) {
-                            CircularProgressIndicator(modifier = Modifier.size(12.dp),
-                                strokeWidth = 1.5.dp, color = CurrentAccent)
-                            Text("Testing…", style = MaterialTheme.typography.labelSmall, color = CurrentAccent)
-                        } else if (isLatencyQueued) {
-                            Text("Queued", style = MaterialTheme.typography.labelSmall, color = CurrentTextMuted)
-                        }
-                        // Latency display with color coding
-                        else profile.latency?.let { latency ->
-                            Text(
-                                text = " • ",
-                                color = CurrentTextMuted
-                            )
-                            val latencyColor = when {
-                                latency < 0 -> StatusError // Failed
-                                latency < 100 -> StatusConnected // Green - excellent
-                                latency < 200 -> StatusConnecting // Yellow - good
-                                else -> StatusError // Red - poor
-                            }
-                            val latencyText = if (latency < 0) "✗" else "${latency}ms"
-                            Text(
-                                text = latencyText,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = latencyColor,
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
-                    }
-                    if (XHttpModePolicy.isXHttp(profile)) {
-                        Text(
-                            text = if (profile.v2rayXhttpModeOverride == "smart") "Smart · ${profile.v2raySmartXhttpMode ?: "checking on connect"}"
-                            else if (profile.v2rayXhttpModeOverride != null) "${profile.v2rayType} · Custom"
-                                else if (profile.v2rayOriginalXhttpMode != null) "stream-up · Forced"
-                                else "XHTTP · ${profile.v2rayType.takeUnless { it.isBlank() || it == "none" } ?: "auto"}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = CurrentAccent,
-                            modifier = Modifier.padding(top = 4.dp)
-                        )
-                    }
-                }
-            }
-            
-            // Action buttons
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                onShare?.let { share ->
-                    IconButton(onClick = share, modifier = Modifier.size(36.dp)) {
-                        Icon(Icons.Default.Share, contentDescription = "Share ${profile.name}",
-                            tint = CurrentAccent, modifier = Modifier.size(18.dp))
-                    }
-                }
-                IconButton(
-                    onClick = onEdit,
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Edit,
-                        contentDescription = "Edit",
-                        tint = CurrentTextSecondary,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-                
-                IconButton(
-                    onClick = onDelete,
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Delete,
-                        contentDescription = "Delete",
-                        tint = StatusError.copy(alpha = 0.7f),
-                        modifier = Modifier.size(18.dp)
+                        color = latencyColor,
+                        maxLines = 1
                     )
                 }
             }
-        }
-        
-        // Connection status indicator
-        if (isSelected && (isConnected || isConnecting)) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(3.dp)
-                    .background(
-                        Brush.horizontalGradient(
-                            colors = listOf(
-                                Color.Transparent,
-                                if (isConnected) StatusConnected else StatusConnecting,
-                                Color.Transparent
-                            )
-                        )
-                    )
-            )
         }
     }
 }

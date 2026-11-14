@@ -50,6 +50,7 @@ fun SettingsScreen(
     onUseFakeIpChange: (Boolean) -> Unit = {},
     onNetworkTools: () -> Unit = {},
     onUsageHistory: () -> Unit = {},
+    onCheckForUpdates: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -439,6 +440,16 @@ fun SettingsScreen(
                     subtitle = com.vpnapp.BuildConfig.VERSION_NAME,
                     icon = Icons.Default.Info
                 )
+                if (onCheckForUpdates != null) {
+                    val available = com.vpnapp.update.DailyUpdateCheck.preferences(context)
+                        .getString("latest", null)?.takeUnless { it == com.vpnapp.BuildConfig.VERSION_NAME }
+                    SettingsItem(
+                        title = "Check for updates",
+                        subtitle = available?.let { "Version $it is available" } ?: "GitHub releases · Checked daily",
+                        icon = Icons.Default.SystemUpdate,
+                        onClick = onCheckForUpdates
+                    )
+                }
             }
             
             Spacer(modifier = Modifier.height(32.dp))

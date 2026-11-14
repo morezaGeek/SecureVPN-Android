@@ -749,11 +749,21 @@ public class ReleaseServerDiagnosticsInstrumentation extends Instrumentation {
         } finally { profiles.edit().putString("profiles_json",saved).putString("selected_profile_id",oldId).commit(); }
     }
     private void clickProfileEdit(String name) {
-        AccessibilityNodeInfo parent=find(name), edit=null;
-        while(parent!=null&&edit==null) { edit=find(parent,"Edit"); parent=parent.getParent(); }
-        require(edit!=null,"Profile Edit control missing");
-        while(edit!=null&&!edit.isClickable()) edit=edit.getParent();
-        require(edit!=null&&edit.performAction(AccessibilityNodeInfo.ACTION_CLICK),"Profile Edit click failed");
+        openProfileActions(name);
+        click("Edit");
+    }
+    private AccessibilityNodeInfo findProfileCard(AccessibilityNodeInfo node, String name) {
+        if(node==null) return null;
+        if(node.isLongClickable() && find(node,name)!=null) return node;
+        for(int i=0;i<node.getChildCount();i++) {
+            AccessibilityNodeInfo card=findProfileCard(node.getChild(i),name);
+            if(card!=null) return card;
+        }
+        return null;
+    }
+    private void openProfileActions(String name) {
+        AccessibilityNodeInfo card=findProfileCard(getUiAutomation().getRootInActiveWindow(),name);
+        require(card!=null&&card.performAction(AccessibilityNodeInfo.ACTION_LONG_CLICK),"Profile actions missing for "+name);
     }
     private void checkVlessEncryptionImport(JSONObject output) throws Exception {
         require(!anyVpn(),"VPN already active");
@@ -859,10 +869,10 @@ public class ReleaseServerDiagnosticsInstrumentation extends Instrumentation {
             launch(); click("Add"); click("Scan QR"); waitFor("Import configuration",20000);
             require(saved.equals(profiles.getString("profiles_json","[]")),"Scan auto-imported without confirmation");
             require(find("QR-Camera-Test")!=null,"Unexpected scanned link"); click("Import");
-            for(int i=0;i<8 && find("Share QR-Camera-Test")==null;i++) {
+            for(int i=0;i<8 && findProfileCard(getUiAutomation().getRootInActiveWindow(),"QR-Camera-Test")==null;i++) {
                 scrollForward(getUiAutomation().getRootInActiveWindow());Thread.sleep(200);
             }
-            click("Share QR-Camera-Test");waitFor("Share QR image",5000);click("Copy link");
+            openProfileActions("QR-Camera-Test");click("Share");waitFor("Share QR image",5000);click("Copy link");
             android.content.ClipboardManager clipboard=getTargetContext().getSystemService(android.content.ClipboardManager.class);
             require(clipboard.getPrimaryClip()!=null && clipboard.getPrimaryClip().getItemAt(0).getText().toString().contains("#QR-Camera-Test"),"Release copy link failed");
             screenshot("qr-release-share.png");click("Share QR image");Thread.sleep(500);

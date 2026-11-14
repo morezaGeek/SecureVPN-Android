@@ -13,6 +13,9 @@ val uploadKeyProperties = Properties().apply {
 }
 // A phone-test APK can coexist with the Google Play installation and uses demo ads.
 val previewBuild = providers.gradleProperty("previewBuild").orNull == "true"
+val connectedCpuLock = providers.gradleProperty("connectedCpuLock").orNull == "true"
+val githubUpdates = providers.gradleProperty("githubUpdates").orNull == "true"
+require(!githubUpdates || !previewBuild) { "GitHub updates require the main app package" }
 
 android {
     namespace = "com.vpnapp"
@@ -23,8 +26,10 @@ android {
         applicationId = if (previewBuild) "com.rahanetmci.securevpn.preview" else "com.rahanetmci.securevpn"
         minSdk = 26
         targetSdk = 36
-        versionCode = 12
-        versionName = if (previewBuild) "1.1.7-test" else "1.1.7"
+        versionCode = if (githubUpdates) 14 else if (connectedCpuLock) 13 else 12
+        versionName = if (githubUpdates) "1.1.9" else if (previewBuild && connectedCpuLock) "1.1.7-test-cpu-lock" else if (previewBuild) "1.1.7-test" else if (connectedCpuLock) "1.1.8" else "1.1.7"
+        buildConfigField("boolean", "CONNECTED_CPU_LOCK", connectedCpuLock.toString())
+        buildConfigField("boolean", "GITHUB_UPDATES", githubUpdates.toString())
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders["admobAppId"] = "ca-app-pub-3940256099942544~3347511713"
@@ -103,6 +108,12 @@ android {
         jniLibs {
             useLegacyPackaging = true
         }
+    }
+}
+
+if (githubUpdates) {
+    listOf("debug", "release").forEach {
+        android.sourceSets.getByName(it).manifest.srcFile("src/github/AndroidManifest.xml")
     }
 }
 

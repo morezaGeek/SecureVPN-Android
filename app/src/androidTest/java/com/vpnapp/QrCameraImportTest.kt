@@ -64,7 +64,9 @@ class QrCameraImportTest {
                 assertEquals(1, vm.profiles.value.size)
                 assertEquals("QR-Camera-Test", vm.profiles.value.single().name)
             }
-            compose.onNodeWithContentDescription("Share QR-Camera-Test").performScrollTo().performClick()
+            compose.onNodeWithText("QR-Camera-Test", useUnmergedTree = true)
+                .performScrollTo().performTouchInput { longClick() }
+            compose.onNodeWithText("Share", substring = false).performClick()
             compose.waitUntil(5_000) {
                 compose.onAllNodesWithContentDescription("QR code for QR-Camera-Test").fetchSemanticsNodes().isNotEmpty()
             }

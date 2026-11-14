@@ -1,5 +1,7 @@
 package com.vpnapp.ui.screens
 
+import androidx.activity.compose.BackHandler
+
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -23,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -81,6 +84,12 @@ fun HomeScreen(
     var showDeleteSubDialog by remember { mutableStateOf<VpnSubscription?>(null) }
     var showEditSubDialog by remember { mutableStateOf<VpnSubscription?>(null) }
     val selectedSubscriptionFilter = selectedSubscriptionId
+    // The action target is separate from the profile selected for connection.
+    var actionProfileId by remember(selectedSubscriptionId) { mutableStateOf<String?>(null) }
+    val actionProfile = actionProfileId?.let { id ->
+        profiles.find { it.id == id && (selectedSubscriptionFilter == null || it.subscriptionId == selectedSubscriptionFilter) }
+    }
+    BackHandler(enabled = actionProfile != null) { actionProfileId = null }
     var expandedLogs by remember { mutableStateOf(false) }
     var showSortMenu by remember { mutableStateOf(false) }
     val subscriptionListState = rememberLazyListState()
@@ -426,18 +435,22 @@ fun HomeScreen(
                 } else {
                     val filteredProfiles = profileSort.apply(if (selectedSubscriptionFilter == null) profiles else profiles.filter { it.subscriptionId == selectedSubscriptionFilter })
                     filteredProfiles.forEach { profile ->
-                        ProfileCard(
-                            profile = profile,
-                            onShare = { onShareProfile(profile) },
-                            isTestingLatency = profile.id in latencyTestState.activeIds,
-                            isLatencyQueued = profile.id in latencyTestState.pendingIds,
-                            isSelected = profile.id == selectedProfile?.id,
-                            connectionState = connectionInfo.state,
-                            onSelect = { onSelectProfile(profile) },
-                            onEdit = { onEditProfile(profile) },
-                            onDelete = { showDeleteDialog = profile }
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
+                        key(profile.id) {
+                            ProfileCard(
+                                profile = profile,
+                                isTestingLatency = profile.id in latencyTestState.activeIds,
+                                isLatencyQueued = profile.id in latencyTestState.pendingIds,
+                                isSelected = profile.id == selectedProfile?.id,
+                                isActionTarget = profile.id == actionProfile?.id,
+                                connectionState = connectionState,
+                                onSelect = {
+                                    actionProfileId = null
+                                    onSelectProfile(profile)
+                                },
+                                onShowActions = { actionProfileId = profile.id }
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
                     }
                 }
                 
@@ -445,6 +458,15 @@ fun HomeScreen(
             }
             }
             adBanner()
+            actionProfile?.let { profile ->
+                ProfileActionsBar(
+                    profileName = profile.name,
+                    onDismiss = { actionProfileId = null },
+                    onEdit = { actionProfileId = null; onEditProfile(profile) },
+                    onShare = { actionProfileId = null; onShareProfile(profile) },
+                    onDelete = { actionProfileId = null; showDeleteDialog = profile }
+                )
+            }
         }
         
     }
@@ -653,6 +675,59 @@ fun HomeScreen(
             containerColor = DarkCard,
             shape = RoundedCornerShape(28.dp)
         )
+    }
+}
+
+@Composable
+private fun ProfileActionsBar(
+    profileName: String,
+    onDismiss: () -> Unit,
+    onEdit: () -> Unit,
+    onShare: () -> Unit,
+    onDelete: () -> Unit
+) {
+    val dark = isAppInDarkTheme()
+    val ink = if (dark) Color.White else Color.Black
+    Surface(color = if (dark) Color.Black else Color.White, contentColor = ink) {
+        Column(Modifier.fillMaxWidth()) {
+            Divider(color = if (dark) Color(0xFF414141) else Color(0xFFBDBDBD))
+            Row(
+                Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = profileName,
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontFamily = FontFamily.Monospace,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Default.Close, contentDescription = "Close profile actions")
+                }
+            }
+            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+                ProfileAction("Edit", Icons.Default.Edit, ink, onEdit, Modifier.weight(1f))
+                ProfileAction("Share", Icons.Default.Share, ink, onShare, Modifier.weight(1f))
+                ProfileAction("Delete", Icons.Default.Delete, MaterialTheme.colorScheme.error, onDelete, Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProfileAction(label: String, icon: ImageVector, color: Color, onClick: () -> Unit, modifier: Modifier) {
+    TextButton(
+        onClick = onClick,
+        modifier = modifier,
+        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
+        colors = ButtonDefaults.textButtonColors(contentColor = color)
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
+            Text(label, style = MaterialTheme.typography.labelMedium)
+        }
     }
 }
 

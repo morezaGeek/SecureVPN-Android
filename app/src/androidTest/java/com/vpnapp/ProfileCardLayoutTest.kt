@@ -29,7 +29,7 @@ class ProfileCardLayoutTest {
                     Box(Modifier.width(360.dp)) {
                         ProfileCard(VpnProfile(name = name, serverAddress = "example.com", latency = 999,
                             lastConnected = 1_759_363_200_000), false, ConnectionState.DISCONNECTED,
-                            {}, {}, {}, isTestingLatency = true, onShare = {})
+                            {}, {}, isTestingLatency = true)
                     }
                 }
             }
@@ -41,8 +41,8 @@ class ProfileCardLayoutTest {
         compose.onNodeWithText("999ms", useUnmergedTree = true).assertDoesNotExist()
         compose.onNodeWithText("Testing…", useUnmergedTree = true).assertIsDisplayed()
         compose.onNodeWithText("Oct 2", useUnmergedTree = true).assertDoesNotExist()
-        compose.onNodeWithContentDescription("Edit", useUnmergedTree = true).assertIsDisplayed()
-        compose.onNodeWithContentDescription("Delete", useUnmergedTree = true).assertIsDisplayed()
-        compose.onNodeWithContentDescription("Share $name", useUnmergedTree = true).assertIsDisplayed()
+        compose.onNodeWithText("Edit", useUnmergedTree = true).assertDoesNotExist()
+        compose.onNodeWithText("Delete", useUnmergedTree = true).assertDoesNotExist()
+        compose.onNodeWithText("Share", useUnmergedTree = true).assertDoesNotExist()
     }
 }

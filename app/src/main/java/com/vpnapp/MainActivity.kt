@@ -65,6 +65,19 @@ import com.vpnapp.vpn.VpnConnectionService
 
 class MainActivity : ComponentActivity() {
     private val vpnViewModel by lazy { ViewModelProvider(this)[VpnViewModel::class.java] }
+    private var updateRequest by androidx.compose.runtime.mutableStateOf(0)
+
+    private fun handleUpdateIntent(intent: Intent) {
+        if (BuildConfig.GITHUB_UPDATES && intent.getBooleanExtra(com.vpnapp.update.DailyUpdateCheck.OPEN_UPDATES, false)) {
+            intent.removeExtra(com.vpnapp.update.DailyUpdateCheck.OPEN_UPDATES)
+            updateRequest++
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleUpdateIntent(intent)
+    }
 
     override fun onStart() {
         super.onStart()
@@ -77,6 +90,10 @@ class MainActivity : ComponentActivity() {
     }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (BuildConfig.GITHUB_UPDATES) {
+            com.vpnapp.update.DailyUpdateCheck.schedule(this)
+            handleUpdateIntent(intent)
+        }
         enableEdgeToEdge()
         
         // Request notification permission for Android 13+
@@ -86,7 +103,7 @@ class MainActivity : ComponentActivity() {
         
         setContent {
             VPNAppTheme {
-                VpnApp(vpnViewModel)
+                VpnApp(vpnViewModel, updateRequest)
             }
         }
         window.decorView.post {
@@ -96,9 +113,12 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun VpnApp(viewModel: VpnViewModel = viewModel()) {
+fun VpnApp(viewModel: VpnViewModel = viewModel(), updateRequest: Int = 0) {
     val navController = rememberNavController()
     val context = LocalContext.current
+    LaunchedEffect(updateRequest) {
+        if (BuildConfig.GITHUB_UPDATES && updateRequest != 0) navController.navigate("app_updates") { launchSingleTop = true }
+    }
     
     // Load saved theme on app start
     LaunchedEffect(Unit) {
@@ -451,12 +471,20 @@ fun VpnApp(viewModel: VpnViewModel = viewModel()) {
                 },
                 onNetworkTools = { navController.navigate("network_tools") },
                 onUsageHistory = { navController.navigate("usage_history") },
+                onCheckForUpdates = if (BuildConfig.GITHUB_UPDATES) {
+                    { navController.navigate("app_updates") }
+                } else null,
                 onNavigateBack = { navController.popBackStack() }
             )
         }
         composable("network_tools") {
             com.vpnapp.ui.screens.NetworkToolsScreen(alwaysOn,killSwitch,
                 connectionInfo.state == ConnectionState.CONNECTED) { navController.popBackStack() }
+        }
+        if (BuildConfig.GITHUB_UPDATES) {
+            composable("app_updates") {
+                com.vpnapp.update.UpdateScreen { navController.popBackStack() }
+            }
         }
         composable("usage_history") {
             com.vpnapp.ui.screens.UsageHistoryScreen { navController.popBackStack() }
