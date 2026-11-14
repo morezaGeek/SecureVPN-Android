@@ -27,9 +27,9 @@ object LastVpnConnection {
         com.vpnapp.vpn.singbox.TunnelDnsSettings(prefs.getString(com.vpnapp.vpn.singbox.TunnelDns.URL_KEY,com.vpnapp.vpn.singbox.TunnelDns.DEFAULT_URL)!!,
             prefs.getBoolean(com.vpnapp.vpn.singbox.TunnelDns.FAKE_IP_KEY,true)).writeTo(intent)
         LanShareSettings.read(context).writeTo(intent)
-        intent.putExtra("bypass_iran",prefs.getBoolean("bypass_iran",true))
+        intent.putExtra("bypass_iran",prefs.getBoolean(TunnelPreferences.BYPASS_IRAN_KEY,false))
             .putExtra("bypass_private_ips",prefs.getBoolean("bypass_private_ips",true))
-            .putExtra(VpnConnectionService.EXTRA_MTU,prefs.getInt("mtu_size",1400))
+            .putExtra(VpnConnectionService.EXTRA_MTU,TunnelPreferences.mtu(prefs, profile.protocol.usesV2RaySettings))
             .putExtra(VpnConnectionService.EXTRA_BUFFER_SIZE,prefs.getInt("buffer_size",2*1024*1024))
             .putExtra(VpnConnectionService.EXTRA_TCP_NODELAY,prefs.getBoolean("tcp_no_delay",true))
             .putStringArrayListExtra(VpnConnectionService.EXTRA_EXCLUDED_APPS,ArrayList(prefs.getStringSet("excluded_apps",emptySet()).orEmpty()))

@@ -7,8 +7,10 @@ import android.util.AtomicFile
 import androidx.test.platform.app.InstrumentationRegistry
 import com.vpnapp.data.ProfileRepository
 import com.vpnapp.data.VpnProfile
+import com.vpnapp.data.VpnProtocol
 import com.vpnapp.vpn.LanShareSettings
 import com.vpnapp.vpn.LastVpnConnection
+import com.vpnapp.vpn.TunnelPreferences
 import com.vpnapp.vpn.VpnConnectionService
 import com.vpnapp.vpn.singbox.TunnelDns
 import com.vpnapp.vpn.singbox.TunnelDnsSettings
@@ -37,10 +39,12 @@ class LastVpnConnectionTest {
             TunnelDnsSettings(TunnelDns.DEFAULT_URL, true).writeTo(connect)
             LastVpnConnection.save(context, connect)
             prefs.edit().putString(TunnelDns.URL_KEY, "https://resolver.example.invalid/dns-query")
-                .putBoolean(TunnelDns.FAKE_IP_KEY, false).putInt("mtu_size", 1360).commit()
+                .putBoolean(TunnelDns.FAKE_IP_KEY, false)
+                .putBoolean("bypass_iran", true).remove(TunnelPreferences.BYPASS_IRAN_KEY)
+                .putInt(TunnelPreferences.OTHER_MTU_KEY, 1360).remove(TunnelPreferences.V2RAY_MTU_KEY).commit()
             LanShareSettings.save(context, false, 10810)
             val edited = profile.copy(name = "Edited restore diagnostic", serverAddress = "edited.example.invalid",
-                port = 8443, username = "edited-user", password = "edited-diagnostic-password",
+                port = 8443, protocol = VpnProtocol.VLESS, username = "edited-user", password = "edited-diagnostic-password",
                 v2rayUuid = "edited-uuid", v2rayPath = "/edited", disableDtls = true)
             repository.saveProfiles(profiles + edited)
 
@@ -57,8 +61,19 @@ class LastVpnConnectionTest {
             assertTrue(restored.getBooleanExtra(VpnConnectionService.EXTRA_DISABLE_DTLS, false))
             assertFalse("The saved selection must not retain credentials", String(saved.readFully()).contains("edited-diagnostic-password"))
             assertEquals(TunnelDnsSettings("https://resolver.example.invalid/dns-query", false), TunnelDnsSettings.read(restored))
-            assertEquals(1360, restored.getIntExtra(VpnConnectionService.EXTRA_MTU, 0))
+            assertFalse(restored.getBooleanExtra("bypass_iran", true))
+            assertEquals(1500, restored.getIntExtra(VpnConnectionService.EXTRA_MTU, 0))
             assertEquals(10810, requireNotNull(LanShareSettings.fromIntent(restored)).port)
+
+            prefs.edit().putBoolean(TunnelPreferences.BYPASS_IRAN_KEY, true)
+                .putInt(TunnelPreferences.V2RAY_MTU_KEY, 1480).commit()
+            val optedIn = requireNotNull(LastVpnConnection.restore(context))
+            assertTrue(optedIn.getBooleanExtra("bypass_iran", false))
+            assertEquals(1480, optedIn.getIntExtra(VpnConnectionService.EXTRA_MTU, 0))
+
+            repository.saveProfiles(profiles + edited.copy(protocol = VpnProtocol.SSTP))
+            val sstp = requireNotNull(LastVpnConnection.restore(context))
+            assertEquals(1360, sstp.getIntExtra(VpnConnectionService.EXTRA_MTU, 0))
 
             repository.saveProfiles(profiles)
             assertNull("A deleted profile must not be reconnected by Always-on", LastVpnConnection.restore(context))

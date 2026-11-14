@@ -62,6 +62,7 @@ import com.vpnapp.ui.screens.*
 import com.vpnapp.ui.theme.VPNAppTheme
 import com.vpnapp.viewmodel.VpnViewModel
 import com.vpnapp.vpn.VpnConnectionService
+import com.vpnapp.vpn.usesV2RaySettings
 
 class MainActivity : ComponentActivity() {
     private val vpnViewModel by lazy { ViewModelProvider(this)[VpnViewModel::class.java] }
@@ -105,9 +106,6 @@ class MainActivity : ComponentActivity() {
             VPNAppTheme {
                 VpnApp(vpnViewModel, updateRequest)
             }
-        }
-        window.decorView.post {
-            if (!isFinishing) com.vpnapp.ads.AdsConsent.refresh(this)
         }
     }
 }
@@ -205,7 +203,8 @@ fun VpnApp(viewModel: VpnViewModel = viewModel(), updateRequest: Int = 0) {
             // Pass global performance settings
             putExtra(VpnConnectionService.EXTRA_BUFFER_SIZE, viewModel.bufferSize.value)
             putExtra(VpnConnectionService.EXTRA_TCP_NODELAY, viewModel.tcpNoDelay.value)
-            putExtra(VpnConnectionService.EXTRA_MTU, viewModel.mtuSize.value)
+            val mtu = if (profile.protocol.usesV2RaySettings) viewModel.v2rayMtuSize.value else viewModel.mtuSize.value
+            putExtra(VpnConnectionService.EXTRA_MTU, mtu)
             // Pass split tunneling apps
             putStringArrayListExtra(VpnConnectionService.EXTRA_EXCLUDED_APPS, ArrayList(viewModel.excludedApps.value))
             // Pass bypass Iran setting
@@ -367,7 +366,6 @@ fun VpnApp(viewModel: VpnViewModel = viewModel(), updateRequest: Int = 0) {
     ) {
         composable("home") {
             HomeScreen(
-                adBanner = { com.vpnapp.ads.ConnectionBanner(connectionInfo.state) },
                 smartPreparing = smartPreparing,
                 onCancelSmartConnection = viewModel::cancelSmartConnection,
                 localAddresses = localAddresses,
@@ -440,6 +438,7 @@ fun VpnApp(viewModel: VpnViewModel = viewModel(), updateRequest: Int = 0) {
             val bufferSize by viewModel.bufferSize.collectAsStateWithLifecycle()
             val tcpNoDelay by viewModel.tcpNoDelay.collectAsStateWithLifecycle()
             val mtuSize by viewModel.mtuSize.collectAsStateWithLifecycle()
+            val v2rayMtuSize by viewModel.v2rayMtuSize.collectAsStateWithLifecycle()
             val tunnelDnsUrl by viewModel.tunnelDnsUrl.collectAsStateWithLifecycle()
             val useFakeIp by viewModel.useFakeIp.collectAsStateWithLifecycle()
             val excludedApps by viewModel.excludedApps.collectAsStateWithLifecycle()
@@ -452,6 +451,8 @@ fun VpnApp(viewModel: VpnViewModel = viewModel(), updateRequest: Int = 0) {
                 tcpNoDelay = tcpNoDelay,
                 mtuSize = mtuSize,
                 onMtuSizeChange = viewModel::setMtuSize,
+                v2rayMtuSize = v2rayMtuSize,
+                onV2RayMtuSizeChange = viewModel::setV2RayMtuSize,
                 tunnelDnsUrl = tunnelDnsUrl,
                 useFakeIp = useFakeIp,
                 onTunnelDnsUrlChange = viewModel::setTunnelDnsUrl,
@@ -466,8 +467,12 @@ fun VpnApp(viewModel: VpnViewModel = viewModel(), updateRequest: Int = 0) {
                 onBypassIranChange = { viewModel.setBypassIran(it) },
                 onBypassPrivateIpsChange = { viewModel.setBypassPrivateIps(it) },
                 onNavigateToSplitTunnel = { navController.navigate("split_tunnel") },
-                onManagePrivacyOptions = {
-                    (context as? Activity)?.let(com.vpnapp.ads.AdsConsent::showPrivacyOptions)
+                onOpenPrivacyPolicy = {
+                    runCatching {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://securevpn.rahanetmci.com/privacy/")))
+                    }.onFailure {
+                        Toast.makeText(context, "Could not open the privacy policy", Toast.LENGTH_SHORT).show()
+                    }
                 },
                 onNetworkTools = { navController.navigate("network_tools") },
                 onUsageHistory = { navController.navigate("usage_history") },

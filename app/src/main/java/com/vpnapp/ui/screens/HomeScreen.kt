@@ -74,7 +74,6 @@ fun HomeScreen(
     onUsageHistory: () -> Unit = {},
     smartPreparing: Boolean = false,
     onCancelSmartConnection: () -> Unit = {},
-    adBanner: @Composable () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var showDeleteDialog by remember { mutableStateOf<VpnProfile?>(null) }
@@ -457,7 +456,6 @@ fun HomeScreen(
                 Spacer(modifier = Modifier.height(24.dp))
             }
             }
-            adBanner()
             actionProfile?.let { profile ->
                 ProfileActionsBar(
                     profileName = profile.name,

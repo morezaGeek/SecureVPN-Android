@@ -53,13 +53,12 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
     private var useNativeEngine = true
     private val routingLock = Any()
     private val tunnelLock = Any()
-    private var adSessionRecorded = false
-    private fun recordSuccessfulAdCycleSession() {
-        if (adSessionRecorded || notificationSession <= 0) return
-        runCatching { usage.record(usageSession,0,0,connectionStartTime) }
-        runCatching { com.vpnapp.ads.AdCycleStore(this).connected(notificationSession) }
-            .onSuccess { adSessionRecorded = true }
-            .onFailure { Log.w(TAG, "Could not record local ad cycle; VPN unaffected", it) }
+    private var usageSessionRecorded = false
+    private fun recordSuccessfulSessionStart() {
+        if (usageSessionRecorded || notificationSession <= 0) return
+        runCatching { usage.record(usageSession, 0, 0, connectionStartTime) }
+            .onSuccess { usageSessionRecorded = true }
+            .onFailure { Log.w(TAG, "Could not record local usage start; VPN unaffected", it) }
     }
     private val notificationLock = Any()
     private var notificationMonitor: Job? = null
@@ -354,9 +353,6 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
                 runCatching { lanProxy?.close() }; lanProxy = null
                 publishLanStatus()
             }
-            if (adSessionRecorded) runCatching {
-                com.vpnapp.ads.AdCycleStore(this).disconnected(notificationSession)
-            }.onFailure { Log.w(TAG, "Could not complete local ad cycle; VPN unaffected", it) }
             synchronized(tunnelLock) {
                 try { vpnInterface?.close() } catch (e: Exception) { Log.w(TAG, "TUN cleanup failed", e) }
                 vpnInterface = null
@@ -563,13 +559,16 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
                 }
                 
                 val prefs = applicationContext.getSharedPreferences("vpn_app_prefs", Context.MODE_PRIVATE)
-                val bypassIran = intent.getBooleanExtra("bypass_iran", prefs.getBoolean("bypass_iran", true))
+                val bypassIran = intent.getBooleanExtra("bypass_iran", prefs.getBoolean(TunnelPreferences.BYPASS_IRAN_KEY, false))
                 val bypassPrivateIps = intent.getBooleanExtra("bypass_private_ips", prefs.getBoolean("bypass_private_ips", true))
+                val usesV2RaySettings = currentProtocol.usesV2RaySettings
+                val savedMtu = TunnelPreferences.mtu(prefs, usesV2RaySettings)
+                val mtu = intent.getIntExtra(EXTRA_MTU, savedMtu).takeIf { it in TunnelPreferences.mtuRange } ?: savedMtu
                 currentBypassIran = bypassIran
                 currentBypassPrivateIps = bypassPrivateIps
 
                 // Extract V2Ray params if applicable
-                if (currentProtocol in listOf(VpnProtocol.VLESS, VpnProtocol.VMESS, VpnProtocol.TROJAN, VpnProtocol.SHADOWSOCKS, VpnProtocol.HYSTERIA2)) {
+                if (usesV2RaySettings) {
                     val v2rayAlpn = intent.getStringExtra(EXTRA_V2RAY_ALPN) ?: ""
                     val v2rayFp = intent.getStringExtra(EXTRA_V2RAY_FP) ?: ""
                     val v2rayFlow = intent.getStringExtra(EXTRA_V2RAY_FLOW) ?: ""
@@ -606,7 +605,7 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
                         hysteriaObfsMaxPacketSize = intent.getIntExtra("hysteria_obfs_max", 1200),
                         hysteriaObfs = intent.getStringExtra("hysteria_obfs") ?: "none",
                         hysteriaObfsPassword = intent.getStringExtra("hysteria_obfs_password") ?: "",
-                        mtu = intent.getIntExtra(EXTRA_MTU, 1400),
+                        mtu = mtu,
                         bypassIranRoutes = bypassIran,
                         bypassPrivateIps = bypassPrivateIps
                     )
@@ -616,7 +615,6 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
                 val bufferSize = intent.getIntExtra(EXTRA_BUFFER_SIZE, 2 * 1024 * 1024)
                 val tcpNoDelay = intent.getBooleanExtra(EXTRA_TCP_NODELAY, true)
                 val disableDtls = intent.getBooleanExtra(EXTRA_DISABLE_DTLS, false)
-                val mtu = intent.getIntExtra(EXTRA_MTU, 1400)
                 val useNative = intent.getBooleanExtra(EXTRA_USE_NATIVE, true)
                 
                 currentExcludedApps = intent.getStringArrayListExtra(EXTRA_EXCLUDED_APPS) ?: emptyList()
@@ -1086,7 +1084,7 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
             if (vpnInterface != null) {
                 _isRunning.value = true
                 markConnectionStarted()
-                recordSuccessfulAdCycleSession()
+                recordSuccessfulSessionStart()
                 
                 // Initialize cached output stream for writing received packets to VPN
                 vpnOutputStream = FileOutputStream(vpnInterface!!.fileDescriptor)
@@ -1362,7 +1360,7 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
                         
                         markConnectionStarted()
                         _isRunning.value = true
-                        recordSuccessfulAdCycleSession()
+                        recordSuccessfulSessionStart()
                         
                         // Cancel connection timeout
                         connectionTimeoutJob?.cancel()

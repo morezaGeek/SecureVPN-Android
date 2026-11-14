@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import com.vpnapp.data.VpnProtocol
 import com.vpnapp.ui.components.ProtocolSelectorCard
 import com.vpnapp.ui.theme.*
+import com.vpnapp.vpn.TunnelPreferences
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -32,6 +33,8 @@ fun SettingsScreen(
     tcpNoDelay: Boolean,
     mtuSize: Int,
     onMtuSizeChange: (Int) -> Unit,
+    v2rayMtuSize: Int,
+    onV2RayMtuSizeChange: (Int) -> Unit,
     bypassIran: Boolean,
     bypassPrivateIps: Boolean,
     forceXhttpStreamUp: Boolean,
@@ -42,7 +45,7 @@ fun SettingsScreen(
     onBypassIranChange: (Boolean) -> Unit,
     onBypassPrivateIpsChange: (Boolean) -> Unit,
     onNavigateToSplitTunnel: () -> Unit,
-    onManagePrivacyOptions: () -> Unit,
+    onOpenPrivacyPolicy: () -> Unit = {},
     onNavigateBack: () -> Unit,
     tunnelDnsUrl: String = com.vpnapp.vpn.singbox.TunnelDns.DEFAULT_URL,
     useFakeIp: Boolean = true,
@@ -288,21 +291,9 @@ fun SettingsScreen(
             }
             
             SettingsSection(title = "Tunnel MTU") {
-                var mtuInput by remember(mtuSize) { mutableStateOf(mtuSize.toString()) }
-                val mtuValue = mtuInput.toIntOrNull()
-                val valid = mtuValue != null && mtuValue in 1200..1500
-                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedTextField(value = mtuInput, onValueChange = { value ->
-                        if (value.length <= 4 && value.all(Char::isDigit)) mtuInput = value
-                    }, label = { Text("MTU (bytes)") }, singleLine = true,
-                        isError = !valid, keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                            keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
-                        shape = RoundedCornerShape(20.dp), modifier = Modifier.weight(1f))
-                    Button(onClick = { mtuValue?.let(onMtuSizeChange) },
-                        enabled = valid && mtuValue != mtuSize) { Text("Apply") }
-                }
-                Text("$mtuSize bytes saved · Range 1200–1500. Applies on next connection, including V2Ray.",
+                MtuSetting("V2Ray / Hysteria2", v2rayMtuSize, onV2RayMtuSizeChange)
+                MtuSetting("OpenConnect / SSTP", mtuSize, onMtuSizeChange)
+                Text("1200–1500 bytes. Applies on the next connection.",
                     style = MaterialTheme.typography.bodySmall, color = CurrentTextSecondary,
                     modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp))
             }
@@ -426,10 +417,10 @@ fun SettingsScreen(
 
             SettingsSection(title = "Privacy") {
                 SettingsItem(
-                    title = "Ad privacy choices",
-                    subtitle = "Review or change Google ad consent",
+                    title = "Privacy Policy",
+                    subtitle = "How SecureVPN handles local data and encrypted tunnels",
                     icon = Icons.Default.PrivacyTip,
-                    onClick = onManagePrivacyOptions
+                    onClick = onOpenPrivacyPolicy
                 )
             }
             
@@ -622,6 +613,32 @@ private fun SettingsItem(
                 tint = CurrentTextMuted
             )
         }
+    }
+}
+
+@Composable
+private fun MtuSetting(label: String, savedMtu: Int, onApply: (Int) -> Unit) {
+    var input by remember(savedMtu) { mutableStateOf(savedMtu.toString()) }
+    val mtu = input.toIntOrNull()
+    val valid = mtu != null && mtu in TunnelPreferences.mtuRange
+    Row(
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        OutlinedTextField(
+            value = input,
+            onValueChange = { value -> if (value.length <= 4 && value.all(Char::isDigit)) input = value },
+            label = { Text(label) },
+            singleLine = true,
+            isError = !valid,
+            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
+            ),
+            shape = RoundedCornerShape(20.dp),
+            modifier = Modifier.weight(1f)
+        )
+        Button(onClick = { mtu?.let(onApply) }, enabled = valid && mtu != savedMtu) { Text("Apply") }
     }
 }
 

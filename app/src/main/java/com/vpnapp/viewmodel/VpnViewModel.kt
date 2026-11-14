@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.vpnapp.data.*
+import com.vpnapp.vpn.TunnelPreferences
 import com.vpnapp.vpn.VpnConnectionService
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -81,7 +82,7 @@ class VpnViewModel @JvmOverloads constructor(application: Application,
     private val _logs = MutableStateFlow<List<ConnectionLog>>(emptyList())
     val logs: StateFlow<List<ConnectionLog>> = _logs.asStateFlow()
 
-    private val _bypassIran = MutableStateFlow(true)
+    private val _bypassIran = MutableStateFlow(false)
     val bypassIran: StateFlow<Boolean> = _bypassIran.asStateFlow()
 
     private val _bypassPrivateIps = MutableStateFlow(true)
@@ -225,7 +226,7 @@ class VpnViewModel @JvmOverloads constructor(application: Application,
 
         // Load settings
         val prefs = getApplication<Application>().getSharedPreferences("vpn_app_prefs", android.content.Context.MODE_PRIVATE)
-        _bypassIran.value = prefs.getBoolean("bypass_iran", true)
+        _bypassIran.value = prefs.getBoolean(TunnelPreferences.BYPASS_IRAN_KEY, false)
         _bypassPrivateIps.value = prefs.getBoolean("bypass_private_ips", true)
         val savedExcludedApps = prefs.getStringSet("excluded_apps", emptySet())?.toList() ?: emptyList()
         _excludedApps.value = savedExcludedApps
@@ -337,7 +338,7 @@ class VpnViewModel @JvmOverloads constructor(application: Application,
         _bypassIran.value = enabled
         getApplication<Application>().getSharedPreferences("vpn_app_prefs", android.content.Context.MODE_PRIVATE)
                 .edit()
-                .putBoolean("bypass_iran", enabled)
+                .putBoolean(TunnelPreferences.BYPASS_IRAN_KEY, enabled)
                 .apply()
         applyRoutingSettings()
     }
@@ -778,9 +779,10 @@ class VpnViewModel @JvmOverloads constructor(application: Application,
         .getBoolean("tcp_no_delay", true))
     val tcpNoDelay: StateFlow<Boolean> = _tcpNoDelay
     
-    private val _mtuSize = MutableStateFlow(application.getSharedPreferences("vpn_app_prefs", 0)
-        .getInt("mtu_size", 1400).takeIf { it in 1200..1500 } ?: 1400)
+    private val _mtuSize = MutableStateFlow(TunnelPreferences.mtu(application.getSharedPreferences("vpn_app_prefs", 0), forV2Ray = false))
     val mtuSize: StateFlow<Int> = _mtuSize
+    private val _v2rayMtuSize = MutableStateFlow(TunnelPreferences.mtu(application.getSharedPreferences("vpn_app_prefs", 0), forV2Ray = true))
+    val v2rayMtuSize: StateFlow<Int> = _v2rayMtuSize.asStateFlow()
     
     private val _tunnelDnsUrl = MutableStateFlow(application.getSharedPreferences("vpn_app_prefs", 0)
         .getString(com.vpnapp.vpn.singbox.TunnelDns.URL_KEY, com.vpnapp.vpn.singbox.TunnelDns.DEFAULT_URL)
@@ -824,11 +826,18 @@ class VpnViewModel @JvmOverloads constructor(application: Application,
     }
     
     fun setMtuSize(mtu: Int) {
-        require(mtu in 1200..1500)
+        require(mtu in TunnelPreferences.mtuRange)
         _mtuSize.value = mtu
         getApplication<Application>().getSharedPreferences("vpn_app_prefs", 0)
-            .edit().putInt("mtu_size", mtu).apply()
+            .edit().putInt(TunnelPreferences.OTHER_MTU_KEY, mtu).apply()
         android.util.Log.d("VpnViewModel", "MTU set to: $mtu")
+    }
+
+    fun setV2RayMtuSize(mtu: Int) {
+        require(mtu in TunnelPreferences.mtuRange)
+        _v2rayMtuSize.value = mtu
+        getApplication<Application>().getSharedPreferences("vpn_app_prefs", 0)
+            .edit().putInt(TunnelPreferences.V2RAY_MTU_KEY, mtu).apply()
     }
     
     // Split Tunneling - update excluded apps
@@ -836,12 +845,8 @@ class VpnViewModel @JvmOverloads constructor(application: Application,
     fun setExcludedApps(apps: List<String>) {
         _excludedApps.value = apps
         android.util.Log.d("VpnViewModel", "Excluded apps updated: ${apps.size} apps")
-        viewModelScope.launch(Dispatchers.IO) {
-            getApplication<Application>().getSharedPreferences("vpn_app_prefs", android.content.Context.MODE_PRIVATE)
-                .edit()
-                .putStringSet("excluded_apps", apps.toSet())
-                .apply()
-        }
+        getApplication<Application>().getSharedPreferences("vpn_app_prefs", android.content.Context.MODE_PRIVATE)
+            .edit().putStringSet("excluded_apps", apps.toSet()).apply()
     }
     
     // Fetch Country Info from VPN exit point

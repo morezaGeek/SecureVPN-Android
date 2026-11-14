@@ -68,9 +68,11 @@ fun SplitTunnelScreen(
         }
     }
     
-    val filteredApps = remember(installedApps, searchQuery) {
-        if (searchQuery.isEmpty()) installedApps
-        else installedApps.filter { it.name.contains(searchQuery, ignoreCase = true) }
+    val excludedPackages = remember(excludedApps) { excludedApps.toSet() }
+    val filteredApps = remember(installedApps, searchQuery, excludedPackages) {
+        val matchingApps = installedApps.filter { it.name.contains(searchQuery, ignoreCase = true) }
+        val (bypassed, otherApps) = matchingApps.partition { it.packageName in excludedPackages }
+        bypassed + otherApps
     }
     
     Column(
@@ -152,10 +154,11 @@ fun SplitTunnelScreen(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                // Keep the viewport at the same position when an app changes groups.
                 items(filteredApps) { app ->
                     AppItem(
                         app = app,
-                        isExcluded = app.packageName in excludedApps,
+                        isExcluded = app.packageName in excludedPackages,
                         onToggle = { isExcluded ->
                             val newList = if (isExcluded) {
                                 excludedApps + app.packageName

@@ -11,10 +11,12 @@ val uploadKeyPropertiesFile = rootProject.file("key.properties")
 val uploadKeyProperties = Properties().apply {
     if (uploadKeyPropertiesFile.isFile) uploadKeyPropertiesFile.inputStream().use { load(it) }
 }
-// A phone-test APK can coexist with the Google Play installation and uses demo ads.
+// A phone-test APK can coexist with the Google Play installation.
 val previewBuild = providers.gradleProperty("previewBuild").orNull == "true"
 val connectedCpuLock = providers.gradleProperty("connectedCpuLock").orNull == "true"
 val githubUpdates = providers.gradleProperty("githubUpdates").orNull == "true"
+val playInternalBuild = providers.gradleProperty("playInternalBuild").orNull == "true"
+require(!playInternalBuild || (!githubUpdates && !previewBuild)) { "Internal Play builds cannot include the GitHub updater or preview package" }
 require(!githubUpdates || !previewBuild) { "GitHub updates require the main app package" }
 
 android {
@@ -26,13 +28,16 @@ android {
         applicationId = if (previewBuild) "com.rahanetmci.securevpn.preview" else "com.rahanetmci.securevpn"
         minSdk = 26
         targetSdk = 36
-        versionCode = if (githubUpdates) 14 else if (connectedCpuLock) 13 else 12
-        versionName = if (githubUpdates) "1.1.9" else if (previewBuild && connectedCpuLock) "1.1.7-test-cpu-lock" else if (previewBuild) "1.1.7-test" else if (connectedCpuLock) "1.1.8" else "1.1.7"
+        versionCode = 16
+        versionName = "1.1.11" + when {
+            previewBuild && connectedCpuLock -> "-test-cpu-lock"
+            previewBuild -> "-test"
+            else -> ""
+        }
         buildConfigField("boolean", "CONNECTED_CPU_LOCK", connectedCpuLock.toString())
         buildConfigField("boolean", "GITHUB_UPDATES", githubUpdates.toString())
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        manifestPlaceholders["admobAppId"] = "ca-app-pub-3940256099942544~3347511713"
         manifestPlaceholders["appLabel"] = if (previewBuild) "SecureVPN Test" else "@string/app_name"
         vectorDrawables {
             useSupportLibrary = true
@@ -67,8 +72,6 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             signingConfig = if (uploadKeyPropertiesFile.isFile) signingConfigs.getByName("upload") else null
-            manifestPlaceholders["admobAppId"] = if (previewBuild) "ca-app-pub-3940256099942544~3347511713" else "ca-app-pub-5284715425712192~7524274903"
-            buildConfigField("String", "ADMOB_BANNER_ID", if (previewBuild) "\"ca-app-pub-3940256099942544/6300978111\"" else "\"ca-app-pub-5284715425712192/9988540732\"")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -79,7 +82,6 @@ android {
             if (providers.gradleProperty("debugUploadSigning").orNull == "true") {
                 signingConfig = signingConfigs.getByName("upload")
             }
-            buildConfigField("String", "ADMOB_BANNER_ID", "\"ca-app-pub-3940256099942544/6300978111\"")
         }
     }
 
@@ -163,8 +165,6 @@ repositories {
 configurations.configureEach { exclude(group = "androidx.graphics", module = "graphics-path") }
 
 dependencies {
-    implementation("com.google.android.gms:play-services-ads:25.5.0")
-    implementation("com.google.android.ump:user-messaging-platform:4.0.0")
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
     implementation("com.google.zxing:core:3.5.3")
     // Sing-box for V2Ray protocols (VLESS, VMess, Trojan, Shadowsocks)

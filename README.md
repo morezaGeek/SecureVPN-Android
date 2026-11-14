@@ -4,7 +4,7 @@ Android VPN client for user-supplied V2Ray-compatible, SSTP and OpenConnect prof
 
 ## Download
 
-Get the signed **SecureVPN 1.1.7 (12)** APK from [GitHub Releases](https://github.com/morezaGeek/SecureVPN-Android/releases/latest). The universal APK includes ARM and x86 architectures. Choose `arm64-v8a` for most current phones, `armeabi-v7a` for older 32-bit ARM phones, or `x86` / `x86_64` for matching Intel devices and emulators. If unsure, use the universal APK. Architecture-specific checksums are in `SHA256SUMS-architectures.txt`; universal APK checksums are in `SHA256SUMS.txt`.
+Get the signed APK from [GitHub Releases](https://github.com/morezaGeek/SecureVPN-Android/releases/latest). Choose `arm64-v8a` for most current phones, `armeabi-v7a` for older 32-bit ARM phones, or `x86` / `x86_64` for matching devices and emulators. Checksums for all four APKs are in `SHA256SUMS.txt`.
 
 This APK uses the existing project release/upload certificate. Google Play may use a different app-signing certificate. If Android reports incompatible signatures, export your profiles before uninstalling the Play version, then install this APK and import them. Future GitHub updates retain the same signing certificate and increase versionCode. Signing keys and passwords are never included in this repository.
 
@@ -14,9 +14,9 @@ This APK uses the existing project release/upload certificate. Google Play may u
 - Profile sorting and cancellable parallel latency checks.
 - Custom DNS, split tunneling, usage history and LAN HTTP/SOCKS5 proxy sharing.
 - Connection notifications and Android always-on / block-without-VPN integration.
-- Light and dark themes. Production builds include AdMob advertising.
+- Light and dark themes, and in-app update checks for the GitHub build.
 
-Version 1.1.7 improves connection timers, traffic statistics, LAN proxy reliability and CPU power management. The setup CPU wake lock releases after successful connection; no quantified battery saving is claimed.
+Version 1.1.11 lists bypassed apps first in Split Tunneling. Bypass Iran starts off after installation or upgrade. V2Ray and Hysteria2 start with an MTU of 1500 bytes.
 
 ## Build
 
@@ -33,8 +33,8 @@ Release signing uses an untracked `key.properties` with `storeFile`, `storePassw
 
 ```sh
 ./gradlew :app:assembleRelease
-# Optional: one standalone signed APK per architecture
-./gradlew -PsplitApks=true :app:assembleRelease
+# GitHub build with one standalone signed APK per architecture
+./gradlew -PgithubUpdates=true -PconnectedCpuLock=true -PsplitApks=true :app:assembleRelease
 ```
 
 ## Verification
