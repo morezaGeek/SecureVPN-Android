@@ -748,7 +748,7 @@ class OpenConnectEngine(
         if (response.statusCode == 200) {
             // Parse IP, DNS, and MTU from headers
             val assignedIp = response.headers["x-cstp-address"] ?: ""
-            val dns = response.headers["x-cstp-dns"] ?: "8.8.8.8"
+            val dns = response.headers["x-cstp-dns"]
             val mtu = minOf(requestedMtu, response.headers["x-cstp-mtu"]?.toIntOrNull() ?: requestedMtu)
             
             // Parse DTLS Info - server may send x-dtls-app-id OR x-dtls-session-id
@@ -867,7 +867,7 @@ class OpenConnectEngine(
                     useDtls = false
                 }
                 
-                callback?.onConnected(assignedIp, resolvedIp, listOf(dns), mtu)
+                callback?.onConnected(assignedIp, resolvedIp, listOfNotNull(dns), mtu)
                 
                 // NOTE: Data loop is NOT started here anymore.
                 // VpnConnectionService will call startDataLoop() after establishing the VPN interface.

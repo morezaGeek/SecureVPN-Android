@@ -28,11 +28,8 @@ class DailyUpdateCheck : JobService() {
             var retry = false
             try {
                 val prefs = preferences(this@DailyUpdateCheck)
-                val release = GitHubUpdate.latest(BuildConfig.VERSION_NAME)
-                if (release == null) {
-                    prefs.edit().remove("latest").apply()
-                } else {
-                    prefs.edit().putString("latest", release.version).apply()
+                val release = refresh(this@DailyUpdateCheck)
+                if (release != null) {
                     if (prefs.getString("notified", null) != release.version && notifyUpdate(release.version)) {
                         prefs.edit().putString("notified", release.version).apply()
                     }
@@ -73,10 +70,38 @@ class DailyUpdateCheck : JobService() {
 
     companion object {
         internal const val OPEN_UPDATES = "com.vpnapp.OPEN_UPDATES"
+        internal const val LATEST_VERSION = "latest"
+        private const val LAST_CHECK = "last_check"
         private const val jobId = 5418
         private const val dayMillis = 24 * 60 * 60 * 1000L
+        private const val foregroundCheckInterval = 6 * 60 * 60 * 1000L
 
         internal fun preferences(context: Context) = context.getSharedPreferences("github_updates", MODE_PRIVATE)
+
+        internal fun availableVersion(context: Context): String? =
+            preferences(context).getString(LATEST_VERSION, null)
+                ?.takeIf { GitHubUpdate.isVersionNewer(it, BuildConfig.VERSION_NAME) }
+
+        internal suspend fun refresh(context: Context): GitHubRelease? {
+            val release = GitHubUpdate.latest(BuildConfig.VERSION_NAME)
+            preferences(context).edit()
+                .putString(LATEST_VERSION, release?.version)
+                .putLong(LAST_CHECK, System.currentTimeMillis())
+                .apply()
+            return release
+        }
+
+        internal suspend fun refreshIfDue(context: Context) {
+            val elapsed = System.currentTimeMillis() - preferences(context).getLong(LAST_CHECK, 0L)
+            if (elapsed in 0L until foregroundCheckInterval) return
+            try {
+                refresh(context)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                // Opening Home is still useful when GitHub is unreachable.
+            }
+        }
 
         internal fun schedule(context: Context) {
             val scheduler = context.getSystemService(JobScheduler::class.java)

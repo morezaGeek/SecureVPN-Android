@@ -4,19 +4,37 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Downloading
 import androidx.compose.material.icons.filled.SystemUpdate
+import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.vpnapp.BuildConfig
 import com.vpnapp.ui.theme.CurrentBackground
+import com.vpnapp.ui.theme.CurrentAccent
+import com.vpnapp.ui.theme.CurrentCard
+import com.vpnapp.ui.theme.CurrentTextPrimary
+import com.vpnapp.ui.theme.CurrentTextSecondary
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -39,7 +57,7 @@ internal fun UpdateScreen(onBack: () -> Unit) {
         checking = true
         status = null
         try {
-            release = GitHubUpdate.latest(BuildConfig.VERSION_NAME)
+            release = DailyUpdateCheck.refresh(context)
             if (release == null) status = "You’re up to date."
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -59,8 +77,10 @@ internal fun UpdateScreen(onBack: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text("Installed version: ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodyMedium)
             if (checking) {
-                LinearProgressIndicator(Modifier.fillMaxWidth())
-                Text("Checking GitHub…")
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    CircularProgressIndicator(Modifier.size(18.dp), color = CurrentAccent, strokeWidth = 2.dp)
+                    Text("Checking GitHub…", style = MaterialTheme.typography.bodyMedium)
+                }
             }
             val update = release
             if (!checking && update != null) {
@@ -68,14 +88,8 @@ internal fun UpdateScreen(onBack: () -> Unit) {
                     Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Icon(Icons.Default.SystemUpdate, contentDescription = null)
                         Text("SecureVPN ${update.version}", style = MaterialTheme.typography.headlineSmall)
-                        Text("What’s new", style = MaterialTheme.typography.titleMedium)
-                        Text(update.notes.ifBlank { "No release notes provided." }, style = MaterialTheme.typography.bodyMedium)
-                        val target = (received.toFloat() / update.bytes).coerceIn(0f, 1f)
-                        val progress by animateFloatAsState(target, label = "updateDownload")
                         if (download != null) {
-                            LinearProgressIndicator(progress = progress, modifier = Modifier.fillMaxWidth().height(8.dp))
-                            Text("${(target * 100).toInt()}% · ${formatMb(received)} of ${formatMb(update.bytes)}")
-                            OutlinedButton(onClick = { download?.cancel() }) { Text("Cancel download") }
+                            DownloadProgress(received = received, total = update.bytes, onCancel = { download?.cancel() })
                         } else if (file?.exists() == true) {
                             Button(onClick = {
                                 try {
@@ -106,6 +120,8 @@ internal fun UpdateScreen(onBack: () -> Unit) {
                                 }
                             }) { Text("Download update · ${formatMb(update.bytes)}") }
                         }
+                        Text("What’s new", style = MaterialTheme.typography.titleMedium)
+                        Text(update.notes.ifBlank { "No release notes provided." }, style = MaterialTheme.typography.bodyMedium)
                     }
                 }
             } else if (!checking) {
@@ -114,6 +130,50 @@ internal fun UpdateScreen(onBack: () -> Unit) {
             status?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
             Text("SecureVPN checks GitHub about once a day. Updates are downloaded only when you choose to download them.",
                 style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+@Composable
+private fun DownloadProgress(received: Long, total: Long, onCancel: () -> Unit) {
+    val fraction = (received.toFloat() / total).coerceIn(0f, 1f)
+    val progress by animateFloatAsState(fraction, tween(durationMillis = 300), label = "downloadProgress")
+    val verifying = received >= total
+    Surface(
+        color = CurrentCard,
+        contentColor = CurrentTextPrimary,
+        border = BorderStroke(1.dp, CurrentAccent.copy(alpha = 0.3f)),
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Surface(shape = RoundedCornerShape(8.dp), color = CurrentAccent.copy(alpha = 0.13f)) {
+                    Icon(
+                        if (verifying) Icons.Default.VerifiedUser else Icons.Default.Downloading,
+                        contentDescription = null,
+                        tint = CurrentAccent,
+                        modifier = Modifier.padding(8.dp).size(20.dp)
+                    )
+                }
+                Column(Modifier.weight(1f)) {
+                    Text(if (verifying) "Verifying APK" else "Downloading update", style = MaterialTheme.typography.titleSmall)
+                    Text("${formatMb(received)} of ${formatMb(total)}", color = CurrentTextSecondary, style = MaterialTheme.typography.labelSmall)
+                }
+                Text("${(fraction * 100).toInt()}%", color = CurrentAccent, fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+            }
+            Box(
+                Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp))
+                    .background(CurrentAccent.copy(alpha = 0.12f))
+                    .semantics { progressBarRangeInfo = ProgressBarRangeInfo(fraction, 0f..1f) }
+            ) {
+                Box(
+                    Modifier.fillMaxWidth(progress).fillMaxHeight().clip(RoundedCornerShape(4.dp))
+                        .background(Brush.horizontalGradient(listOf(CurrentAccent.copy(alpha = 0.5f), CurrentAccent)))
+                )
+            }
+            TextButton(onClick = onCancel, modifier = Modifier.align(Alignment.End)) { Text("Cancel download") }
         }
     }
 }

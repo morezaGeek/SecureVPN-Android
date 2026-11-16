@@ -4,9 +4,15 @@ import java.net.URI
 import org.json.JSONObject
 
 object TunnelDns {
-    const val DEFAULT_URL = "https://1.1.1.1/dns-query"
-    const val URL_KEY = "tunnel_dns_url"
-    const val FAKE_IP_KEY = "tunnel_dns_fake_ip"
+    const val DEFAULT_URL = "https://8.8.8.8/dns-query"
+    const val DEFAULT_FAKE_IP = false
+    val GOOGLE_IPS = listOf("8.8.8.8", "8.8.4.4")
+
+    // Use new keys so all upgrades to 1.1.12 start with Google DoH and real answers.
+    // Later choices are read from these same keys, including for an Always-on restart.
+    const val URL_KEY = "tunnel_doh_url"
+    const val FAKE_IP_KEY = "tunnel_doh_fake_ip"
+    const val LEGACY_SERVER_DNS_KEY = "legacy_vpn_server_dns"
 
     fun validateUrl(value: String): String {
         val uri = URI(value.trim())

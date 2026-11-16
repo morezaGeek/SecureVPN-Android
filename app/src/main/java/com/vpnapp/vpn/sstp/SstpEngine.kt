@@ -528,7 +528,7 @@ class SstpEngine(
         _state.value = SstpState.CONNECTED
         socket?.soTimeout = READ_TIMEOUT
         cb.onConnected(currentIpRequest, socket?.inetAddress?.hostAddress ?: serverAddress,
-            if (currentDnsRequest != "0.0.0.0") listOf(currentDnsRequest) else listOf("8.8.8.8"))
+            if (currentDnsRequest != "0.0.0.0") listOf(currentDnsRequest) else emptyList())
     }
     
     private suspend fun sendLcpConfReq(empty: Boolean = false) {

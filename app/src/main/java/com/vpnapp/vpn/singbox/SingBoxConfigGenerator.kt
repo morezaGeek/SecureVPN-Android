@@ -49,9 +49,8 @@ object SingBoxConfigGenerator {
 
     fun generate(profile: VpnProfile, context: Context, probe: ProbeEndpoint? = null, runtimeDns: TunnelDnsSettings? = null): String {
         val config = JSONObject()
-        val preferences = context.getSharedPreferences("vpn_app_prefs", 0)
-        val dnsUrl = runtimeDns?.url ?: preferences.getString(TunnelDns.URL_KEY, TunnelDns.DEFAULT_URL) ?: TunnelDns.DEFAULT_URL
-        val fakeIp = runtimeDns?.fakeIp ?: preferences.getBoolean(TunnelDns.FAKE_IP_KEY, true)
+        val dns = runtimeDns ?: TunnelDnsSettings.fromPreferences(context.getSharedPreferences("vpn_app_prefs", 0))
+        val fakeIp = dns.fakeIp
 
         val isIp = profile.serverAddress.matches(Regex("^\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}$"))
         // PRE-RESOLVE the server address to IP to avoid Go runtime DNS issues
@@ -79,13 +78,10 @@ object SingBoxConfigGenerator {
             put("store_fakeip", true)
         }))
 
-        // DNS configuration - FakeIP mode for ZERO-LATENCY DNS resolution
-        // FakeIP returns instant fake IPs (0ms). When connecting to a fake IP,
-        // sing-box sends the REAL domain name to the VPN server which resolves it.
-        // This bypasses ALL local ISP DNS blocking/filtering.
+        // The DoH resolver returns real answers by default. FakeIP is opt-in.
         config.put("dns", JSONObject().apply {
             put("servers", JSONArray().apply {
-                put(TunnelDns.server(TunnelDns.validateUrl(dnsUrl), "proxy-dns", "proxy"))
+                put(TunnelDns.server(TunnelDns.validateUrl(dns.url), "proxy-dns", "proxy"))
                 if (profile.v2rayEch.isNotBlank()) put(TunnelDns.echResolver(profile.v2rayEch))
                 // FakeIP server: returns instant fake IPs with ZERO latency (IPv4 only)
                 put(JSONObject().apply {
@@ -145,7 +141,7 @@ object SingBoxConfigGenerator {
                     })
                     Log.i(TAG, "Bypass Iran DNS enabled - ${fullIranDomains.size} Iranian domains + .ir use direct DNS")
                 }
-                // All other domain queries get FakeIP for instant resolution (both A and AAAA)
+                // Use FakeIP for address answers only when enabled.
                 put(JSONObject().apply {
                     put("query_type", JSONArray().apply {
                         put("A")

@@ -30,6 +30,8 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlin.coroutines.coroutineContext
 import com.vpnapp.vpn.singbox.ProbeEndpoint
+import com.vpnapp.vpn.singbox.TunnelDns
+import com.vpnapp.vpn.singbox.TunnelDnsSettings
 import com.vpnapp.util.ProbeHttp
 
 class VpnViewModel @JvmOverloads constructor(application: Application,
@@ -360,7 +362,7 @@ class VpnViewModel @JvmOverloads constructor(application: Application,
                 val context = getApplication<Application>()
                 context.startService(android.content.Intent(context, VpnConnectionService::class.java).apply {
                     action = VpnConnectionService.ACTION_UPDATE_ROUTING
-                    com.vpnapp.vpn.singbox.TunnelDnsSettings(_tunnelDnsUrl.value,_useFakeIp.value).writeTo(this)
+                    tunnelDnsSettings().writeTo(this)
                     putExtra("bypass_iran", _bypassIran.value)
                     putExtra("bypass_private_ips", _bypassPrivateIps.value)
                 })
@@ -784,30 +786,36 @@ class VpnViewModel @JvmOverloads constructor(application: Application,
     private val _v2rayMtuSize = MutableStateFlow(TunnelPreferences.mtu(application.getSharedPreferences("vpn_app_prefs", 0), forV2Ray = true))
     val v2rayMtuSize: StateFlow<Int> = _v2rayMtuSize.asStateFlow()
     
-    private val _tunnelDnsUrl = MutableStateFlow(application.getSharedPreferences("vpn_app_prefs", 0)
-        .getString(com.vpnapp.vpn.singbox.TunnelDns.URL_KEY, com.vpnapp.vpn.singbox.TunnelDns.DEFAULT_URL)
-        ?: com.vpnapp.vpn.singbox.TunnelDns.DEFAULT_URL)
+    private val dnsPreferences = application.getSharedPreferences("vpn_app_prefs", 0)
+    private val _tunnelDnsUrl = MutableStateFlow(dnsPreferences.getString(TunnelDns.URL_KEY, TunnelDns.DEFAULT_URL)
+        ?: TunnelDns.DEFAULT_URL)
     val tunnelDnsUrl: StateFlow<String> = _tunnelDnsUrl
-    private val _useFakeIp = MutableStateFlow(application.getSharedPreferences("vpn_app_prefs", 0)
-        .getBoolean(com.vpnapp.vpn.singbox.TunnelDns.FAKE_IP_KEY, true))
+    private val _useFakeIp = MutableStateFlow(dnsPreferences.getBoolean(TunnelDns.FAKE_IP_KEY, TunnelDns.DEFAULT_FAKE_IP))
     val useFakeIp: StateFlow<Boolean> = _useFakeIp
+    private val _useLegacyServerDns = MutableStateFlow(dnsPreferences.getBoolean(TunnelDns.LEGACY_SERVER_DNS_KEY, false))
+    val useLegacyServerDns: StateFlow<Boolean> = _useLegacyServerDns.asStateFlow()
+
+    fun tunnelDnsSettings() = TunnelDnsSettings(_tunnelDnsUrl.value, _useFakeIp.value, _useLegacyServerDns.value)
 
     fun setTunnelDnsUrl(url: String) {
-        val validated = com.vpnapp.vpn.singbox.TunnelDns.validateUrl(url)
+        val validated = TunnelDns.validateUrl(url)
         _tunnelDnsUrl.value = validated
         // Saving a resolver means using its answers, not leaving A/AAAA queries on FakeIP.
         _useFakeIp.value = false
-        getApplication<Application>().getSharedPreferences("vpn_app_prefs", 0).edit()
-            .putString(com.vpnapp.vpn.singbox.TunnelDns.URL_KEY, validated)
-            .putBoolean(com.vpnapp.vpn.singbox.TunnelDns.FAKE_IP_KEY, false).apply()
+        dnsPreferences.edit().putString(TunnelDns.URL_KEY, validated)
+            .putBoolean(TunnelDns.FAKE_IP_KEY, false).apply()
         applyRoutingSettings()
     }
 
     fun setUseFakeIp(enabled: Boolean) {
         _useFakeIp.value = enabled
-        getApplication<Application>().getSharedPreferences("vpn_app_prefs", 0).edit()
-            .putBoolean(com.vpnapp.vpn.singbox.TunnelDns.FAKE_IP_KEY, enabled).apply()
+        dnsPreferences.edit().putBoolean(TunnelDns.FAKE_IP_KEY, enabled).apply()
         applyRoutingSettings()
+    }
+
+    fun setUseLegacyServerDns(enabled: Boolean) {
+        _useLegacyServerDns.value = enabled
+        dnsPreferences.edit().putBoolean(TunnelDns.LEGACY_SERVER_DNS_KEY, enabled).apply()
     }
 
     fun setBufferSize(size: Int) {

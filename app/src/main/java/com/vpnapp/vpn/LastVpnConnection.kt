@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.util.AtomicFile
 import com.vpnapp.data.ProfileRepository
+import com.vpnapp.vpn.singbox.TunnelDnsSettings
 import java.io.File
 
 /** Private, non-backed-up connection state used only when Android starts Always-on VPN. */
@@ -24,8 +25,7 @@ object LastVpnConnection {
         val intent=Intent(context,VpnConnectionService::class.java).setAction(VpnConnectionService.ACTION_CONNECT)
         ProfileConnectionExtras.write(intent, profile)
         val prefs=context.getSharedPreferences("vpn_app_prefs",0)
-        com.vpnapp.vpn.singbox.TunnelDnsSettings(prefs.getString(com.vpnapp.vpn.singbox.TunnelDns.URL_KEY,com.vpnapp.vpn.singbox.TunnelDns.DEFAULT_URL)!!,
-            prefs.getBoolean(com.vpnapp.vpn.singbox.TunnelDns.FAKE_IP_KEY,true)).writeTo(intent)
+        TunnelDnsSettings.fromPreferences(prefs).writeTo(intent)
         LanShareSettings.read(context).writeTo(intent)
         intent.putExtra("bypass_iran",prefs.getBoolean(TunnelPreferences.BYPASS_IRAN_KEY,false))
             .putExtra("bypass_private_ips",prefs.getBoolean("bypass_private_ips",true))

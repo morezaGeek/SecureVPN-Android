@@ -25,6 +25,7 @@ import com.vpnapp.data.VpnProtocol
 import com.vpnapp.ui.components.ProtocolSelectorCard
 import com.vpnapp.ui.theme.*
 import com.vpnapp.vpn.TunnelPreferences
+import com.vpnapp.vpn.singbox.TunnelDns
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -47,10 +48,12 @@ fun SettingsScreen(
     onNavigateToSplitTunnel: () -> Unit,
     onOpenPrivacyPolicy: () -> Unit = {},
     onNavigateBack: () -> Unit,
-    tunnelDnsUrl: String = com.vpnapp.vpn.singbox.TunnelDns.DEFAULT_URL,
-    useFakeIp: Boolean = true,
+    tunnelDnsUrl: String = TunnelDns.DEFAULT_URL,
+    useFakeIp: Boolean = TunnelDns.DEFAULT_FAKE_IP,
+    useLegacyServerDns: Boolean = false,
     onTunnelDnsUrlChange: (String) -> Unit = {},
     onUseFakeIpChange: (Boolean) -> Unit = {},
+    onUseLegacyServerDnsChange: (Boolean) -> Unit = {},
     onNetworkTools: () -> Unit = {},
     onUsageHistory: () -> Unit = {},
     onCheckForUpdates: (() -> Unit)? = null,
@@ -157,26 +160,37 @@ fun SettingsScreen(
                 )
             }
             
-            SettingsSection(title = "Tunnel DNS · V2Ray / Hysteria2") {
+            SettingsSection(title = "Tunnel DNS") {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("DNS inside the VPN is separate from Android Private DNS. Saving applies it to the active tunnel and turns FakeIP off.",
+                    Text("V2Ray, Hysteria2 and native OpenConnect use this DoH resolver through the tunnel. Saving turns FakeIP off.",
                         style = MaterialTheme.typography.bodySmall, color = CurrentTextSecondary)
                     OutlinedTextField(value = dnsDraft, onValueChange = { dnsDraft = it; dnsError = null },
                         label = { Text("DNS-over-HTTPS URL") }, singleLine = true, isError = dnsError != null,
                         modifier = Modifier.fillMaxWidth())
                     dnsError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
-                    Button(onClick = {
-                        runCatching { onTunnelDnsUrlChange(com.vpnapp.vpn.singbox.TunnelDns.validateUrl(dnsDraft)) }
-                            .onSuccess { android.widget.Toast.makeText(context, "DNS saved · real DNS answers enabled", android.widget.Toast.LENGTH_SHORT).show() }
-                            .onFailure { dnsError = "Enter a valid HTTPS DNS-over-HTTPS URL" }
-                    }) { Text("Save DNS") }
-                    Text(if (useFakeIp) "FakeIP is enabled: A/AAAA queries use synthetic addresses; the selected DoH resolver is not used for these answers. Save DNS to use it."
-                        else "Using real answers from the saved DoH resolver. Anti-sanction resolvers may redirect some services; if YouTube fails, try https://1.1.1.1/dns-query.",
-                        style = MaterialTheme.typography.bodySmall, color = CurrentTextSecondary)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = {
+                            runCatching { onTunnelDnsUrlChange(dnsDraft) }
+                                .onSuccess { android.widget.Toast.makeText(context, "DNS saved", android.widget.Toast.LENGTH_SHORT).show() }
+                                .onFailure { dnsError = "Enter a valid HTTPS DNS-over-HTTPS URL" }
+                        }) { Text("Save DNS") }
+                        TextButton(onClick = {
+                            onTunnelDnsUrlChange(TunnelDns.DEFAULT_URL)
+                            dnsDraft = TunnelDns.DEFAULT_URL
+                            dnsError = null
+                        }) { Text("Use Google DNS") }
+                    }
                 }
                 SettingsToggle(title = "FakeIP", subtitle = if (useFakeIp) "ON · Resolve destinations at the VPN server"
                     else "OFF · Use real answers from tunnel DNS", icon = Icons.Default.Dns,
                     checked = useFakeIp, onCheckedChange = onUseFakeIpChange)
+                SettingsToggle(
+                    title = "Use VPN server DNS",
+                    subtitle = "SSTP and Java OpenConnect only. Defaults to 8.8.8.8 and 8.8.4.4. Applies on the next connection.",
+                    icon = Icons.Default.Dns,
+                    checked = useLegacyServerDns,
+                    onCheckedChange = onUseLegacyServerDnsChange
+                )
             }
 
             SettingsSection(title = "XHTTP") {

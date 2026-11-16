@@ -5,6 +5,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import com.vpnapp.ui.components.appClickable
 import androidx.compose.foundation.layout.*
@@ -74,6 +75,8 @@ fun HomeScreen(
     onUsageHistory: () -> Unit = {},
     smartPreparing: Boolean = false,
     onCancelSmartConnection: () -> Unit = {},
+    updateVersion: String? = null,
+    onOpenUpdate: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var showDeleteDialog by remember { mutableStateOf<VpnProfile?>(null) }
@@ -150,7 +153,26 @@ fun HomeScreen(
                 )
             )
 
-            
+            if (updateVersion != null) {
+                Surface(
+                    onClick = onOpenUpdate,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    color = CurrentAccent.copy(alpha = 0.09f),
+                    contentColor = CurrentAccent,
+                    border = BorderStroke(1.dp, CurrentAccent.copy(alpha = 0.35f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(Icons.Default.SystemUpdate, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Text("Update $updateVersion", style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+            }
+
             // Main content
             Column(
                 modifier = Modifier

@@ -31,4 +31,11 @@ class GitHubUpdateTest {
             GitHubUpdate.parseRelease(release(abi), "1.1.8", listOf("arm64-v8a"))
         }
     }
+
+    @Test fun homeBadgeIgnoresCachedVersionAfterInstallingIt() {
+        assertTrue(GitHubUpdate.isVersionNewer("1.1.12", "1.1.9"))
+        assertFalse(GitHubUpdate.isVersionNewer("1.1.12", "1.1.12"))
+        assertFalse(GitHubUpdate.isVersionNewer("1.1.9", "1.1.12"))
+        assertFalse(GitHubUpdate.isVersionNewer("invalid", "1.1.12"))
+    }
 }

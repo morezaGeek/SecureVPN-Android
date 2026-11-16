@@ -54,10 +54,7 @@ internal object GitHubUpdate {
         if (json.optBoolean("draft") || json.optBoolean("prerelease")) return null
         val tag = json.optString("tag_name")
         val version = tagPattern.matchEntire(tag)?.groupValues?.get(1) ?: return null
-        val current = tagPattern.matchEntire("v${installed.substringBefore('-')}")?.groupValues?.get(1)
-            ?: throw IOException("This app version cannot be compared.")
-        val order = version.split('.').map(String::toInt).zip(current.split('.').map(String::toInt))
-        if ((order.firstOrNull { it.first != it.second }?.let { it.first.compareTo(it.second) } ?: 0) <= 0) return null
+        if (!isVersionNewer(version, installed)) return null
 
         val assets = json.optJSONArray("assets") ?: throw IOException("No APK is available for this release.")
         val byName = (0 until assets.length()).mapNotNull(assets::optJSONObject).associateBy { it.optString("name") }
@@ -75,6 +72,13 @@ internal object GitHubUpdate {
             }
         }
         throw IOException("No verified APK is available for this device.")
+    }
+
+    internal fun isVersionNewer(version: String, installed: String): Boolean {
+        val next = tagPattern.matchEntire("v$version")?.groupValues?.get(1) ?: return false
+        val current = tagPattern.matchEntire("v${installed.substringBefore('-')}")?.groupValues?.get(1) ?: return false
+        val order = next.split('.').map(String::toInt).zip(current.split('.').map(String::toInt))
+        return order.firstOrNull { it.first != it.second }?.let { it.first > it.second } ?: false
     }
 
     suspend fun download(context: Context, release: GitHubRelease, progress: (Long) -> Unit): File =
@@ -113,9 +117,9 @@ internal object GitHubUpdate {
                     throw IOException("The APK download is damaged. Please try again.")
                 }
                 currentCoroutineContext().ensureActive()
+                progress(bytes)
                 verifyApk(context, file, release.version)
                 currentCoroutineContext().ensureActive()
-                progress(bytes)
                 verified = true
                 file
             } finally {

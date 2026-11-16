@@ -162,11 +162,9 @@ class SingBoxEngine(
     }
 
     private fun logDnsMode() {
-        val prefs = context.getSharedPreferences("vpn_app_prefs", 0)
-        val fakeIp = runtimeDns?.fakeIp ?: prefs.getBoolean(TunnelDns.FAKE_IP_KEY, true)
-        val dnsHost = java.net.URI(runtimeDns?.url ?: prefs.getString(TunnelDns.URL_KEY, TunnelDns.DEFAULT_URL)).host
-        callback.onLog(if (fakeIp) "DNS mode: FakeIP (destination A/AAAA answers do not use DoH)"
-            else "DNS mode: real answers via DoH $dnsHost through VPN")
+        val dns = runtimeDns ?: TunnelDnsSettings.fromPreferences(context.getSharedPreferences("vpn_app_prefs", 0))
+        callback.onLog(if (dns.fakeIp) "DNS mode: FakeIP (destination A/AAAA answers do not use DoH)"
+            else "DNS mode: real answers via DoH ${java.net.URI(dns.url).host} through VPN")
     }
 
     @Synchronized

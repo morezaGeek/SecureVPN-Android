@@ -5,6 +5,17 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class TunnelDnsTest {
+    @Test fun defaultGoogleDnsUsesRealAnswersAndNeedsNoBootstrapLookup() {
+        val resolver = TunnelDns.server(TunnelDns.DEFAULT_URL, "proxy-dns", "proxy")
+        assertEquals(listOf("8.8.8.8", "8.8.4.4"), TunnelDns.GOOGLE_IPS)
+        assertEquals("8.8.8.8", resolver.getString("server"))
+        assertEquals("https", resolver.getString("type"))
+        assertEquals("/dns-query", resolver.getString("path"))
+        assertEquals("proxy", resolver.getString("detour"))
+        assertFalse(resolver.has("domain_resolver"))
+        assertFalse(TunnelDns.DEFAULT_FAKE_IP)
+    }
+
     @Test fun echAndGeckoReachTheCoreWithTheirOriginalParameters() {
         val p = VpnProfile(name = "ECH", serverAddress = "192.0.2.1", protocol = VpnProtocol.VLESS,
             v2rayNetwork = "xhttp", v2rayType = "packet-up", v2rayTls = "tls", v2rayAlpn = "h2",

@@ -50,6 +50,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.NavHost
@@ -60,9 +62,11 @@ import com.vpnapp.data.VpnProfile
 import com.vpnapp.data.VpnProtocol
 import com.vpnapp.ui.screens.*
 import com.vpnapp.ui.theme.VPNAppTheme
+import com.vpnapp.update.DailyUpdateCheck
 import com.vpnapp.viewmodel.VpnViewModel
 import com.vpnapp.vpn.VpnConnectionService
 import com.vpnapp.vpn.usesV2RaySettings
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private val vpnViewModel by lazy { ViewModelProvider(this)[VpnViewModel::class.java] }
@@ -92,8 +96,13 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (BuildConfig.GITHUB_UPDATES) {
-            com.vpnapp.update.DailyUpdateCheck.schedule(this)
+            DailyUpdateCheck.schedule(this)
             handleUpdateIntent(intent)
+            lifecycleScope.launch {
+                repeatOnLifecycle(Lifecycle.State.STARTED) {
+                    DailyUpdateCheck.refreshIfDue(applicationContext)
+                }
+            }
         }
         enableEdgeToEdge()
         
@@ -114,6 +123,18 @@ class MainActivity : ComponentActivity() {
 fun VpnApp(viewModel: VpnViewModel = viewModel(), updateRequest: Int = 0) {
     val navController = rememberNavController()
     val context = LocalContext.current
+    var updateVersion by remember { mutableStateOf(if (BuildConfig.GITHUB_UPDATES) DailyUpdateCheck.availableVersion(context) else null) }
+    if (BuildConfig.GITHUB_UPDATES) {
+        DisposableEffect(context) {
+            val prefs = DailyUpdateCheck.preferences(context)
+            val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+                if (key == DailyUpdateCheck.LATEST_VERSION || key == null) updateVersion = DailyUpdateCheck.availableVersion(context)
+            }
+            prefs.registerOnSharedPreferenceChangeListener(listener)
+            updateVersion = DailyUpdateCheck.availableVersion(context)
+            onDispose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+        }
+    }
     LaunchedEffect(updateRequest) {
         if (BuildConfig.GITHUB_UPDATES && updateRequest != 0) navController.navigate("app_updates") { launchSingleTop = true }
     }
@@ -196,7 +217,7 @@ fun VpnApp(viewModel: VpnViewModel = viewModel(), updateRequest: Int = 0) {
         val intent = Intent(context, VpnConnectionService::class.java).apply {
             action = VpnConnectionService.ACTION_CONNECT
             putExtra(VpnConnectionService.EXTRA_UI_VISIBLE, true)
-            com.vpnapp.vpn.singbox.TunnelDnsSettings(viewModel.tunnelDnsUrl.value,viewModel.useFakeIp.value).writeTo(this)
+            viewModel.tunnelDnsSettings().writeTo(this)
             com.vpnapp.vpn.LanShareSettings.read(context).writeTo(this)
             com.vpnapp.vpn.ProfileConnectionExtras.write(this, profile)
 
@@ -402,6 +423,8 @@ fun VpnApp(viewModel: VpnViewModel = viewModel(), updateRequest: Int = 0) {
                 onTestCurrentLatency = { viewModel.testCurrentLatency() },
                 onNavigateToLogs = { navController.navigate("logs") },
                 onNavigateToSettings = { navController.navigate("settings") },
+                updateVersion = updateVersion,
+                onOpenUpdate = { navController.navigate("app_updates") { launchSingleTop = true } },
                 onAddSubscription = { url, name -> viewModel.addSubscription(url, name) },
                 onRefreshSubscription = { viewModel.refreshSubscription(it) },
                 onRefreshAllSubscriptions = { viewModel.refreshAllSubscriptions() },
@@ -441,6 +464,7 @@ fun VpnApp(viewModel: VpnViewModel = viewModel(), updateRequest: Int = 0) {
             val v2rayMtuSize by viewModel.v2rayMtuSize.collectAsStateWithLifecycle()
             val tunnelDnsUrl by viewModel.tunnelDnsUrl.collectAsStateWithLifecycle()
             val useFakeIp by viewModel.useFakeIp.collectAsStateWithLifecycle()
+            val useLegacyServerDns by viewModel.useLegacyServerDns.collectAsStateWithLifecycle()
             val excludedApps by viewModel.excludedApps.collectAsStateWithLifecycle()
             val bypassIran by viewModel.bypassIran.collectAsStateWithLifecycle()
             val bypassPrivateIps by viewModel.bypassPrivateIps.collectAsStateWithLifecycle()
@@ -455,8 +479,10 @@ fun VpnApp(viewModel: VpnViewModel = viewModel(), updateRequest: Int = 0) {
                 onV2RayMtuSizeChange = viewModel::setV2RayMtuSize,
                 tunnelDnsUrl = tunnelDnsUrl,
                 useFakeIp = useFakeIp,
+                useLegacyServerDns = useLegacyServerDns,
                 onTunnelDnsUrlChange = viewModel::setTunnelDnsUrl,
                 onUseFakeIpChange = viewModel::setUseFakeIp,
+                onUseLegacyServerDnsChange = viewModel::setUseLegacyServerDns,
                 bypassIran = bypassIran,
                 bypassPrivateIps = bypassPrivateIps,
                 forceXhttpStreamUp = forceXhttpStreamUp,

@@ -23,6 +23,8 @@ import com.vpnapp.data.VpnProfile
 import com.vpnapp.data.VpnProtocol
 import com.vpnapp.vpn.singbox.SingBoxConfigGenerator
 import com.vpnapp.vpn.singbox.SingBoxEngine
+import com.vpnapp.vpn.singbox.TunnelDns
+import com.vpnapp.vpn.singbox.TunnelDnsSettings
 import com.vpnapp.vpn.sstp.SstpEngine
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -96,7 +98,7 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
     private var lanStartError: String? = null
     private val lanLock=Any()
     @Volatile private var runtimeLan: LanShareSettings? = null
-    @Volatile private var runtimeDns: com.vpnapp.vpn.singbox.TunnelDnsSettings? = null
+    @Volatile private var runtimeDns: TunnelDnsSettings? = null
     private val usage by lazy { com.vpnapp.data.UsageHistory(this) }
     private var systemManaged = false
     private var usageSession = java.util.UUID.randomUUID().toString()
@@ -530,8 +532,6 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
         }
         when (intent?.action) {
             ACTION_CONNECT -> {
-                runtimeDns=com.vpnapp.vpn.singbox.TunnelDnsSettings.read(intent)
-                runtimeLan=LanShareSettings.fromIntent(intent)
                 // CRITICAL: Guard against double-tap at the EARLIEST point
                 if (isConnecting.get() || _isRunning.value || isDisconnecting.get()) {
                     Log.w(TAG, "Connection already in progress or running. Ignoring duplicate ACTION_CONNECT.")
@@ -559,6 +559,8 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
                 }
                 
                 val prefs = applicationContext.getSharedPreferences("vpn_app_prefs", Context.MODE_PRIVATE)
+                runtimeDns = TunnelDnsSettings.read(intent) ?: TunnelDnsSettings.fromPreferences(prefs)
+                runtimeLan = LanShareSettings.fromIntent(intent)
                 val bypassIran = intent.getBooleanExtra("bypass_iran", prefs.getBoolean(TunnelPreferences.BYPASS_IRAN_KEY, false))
                 val bypassPrivateIps = intent.getBooleanExtra("bypass_private_ips", prefs.getBoolean("bypass_private_ips", true))
                 val usesV2RaySettings = currentProtocol.usesV2RaySettings
@@ -655,7 +657,7 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
                 }
             }
             ACTION_UPDATE_ROUTING -> {
-                runtimeDns=com.vpnapp.vpn.singbox.TunnelDnsSettings.read(intent) ?: runtimeDns
+                runtimeDns = TunnelDnsSettings.read(intent) ?: runtimeDns
                 serviceScope?.launch {
                     // Reload operations run serially with engine start/stop.
                     synchronized(routingLock) {
@@ -1019,23 +1021,20 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
                 .setMtu(mtu) // Use server's MTU directly
                 .setBlocking(true) // Blocking mode forces read() to wait for data (0 latnecy)
             
-            // Add DNS servers from server
-            dnsServers.forEach { dns ->
-                try {
-                    builder.addDnsServer(dns)
-                    Log.d(TAG, "Added DNS: $dns")
-                } catch (e: Exception) {
-                    Log.w(TAG, "Failed to add DNS $dns: ${e.message}")
-                }
-            }
-            
-            // ALWAYS add public DNS as fallback to ensure name resolution works
-            try {
-                builder.addDnsServer("8.8.8.8")
-                builder.addDnsServer("1.1.1.1")
-                Log.d(TAG, "Added fallback DNS: 8.8.8.8, 1.1.1.1")
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to add fallback DNS: ${e.message}")
+            val useServerDns = runtimeDns?.useLegacyServerDns == true
+            val serverDnsAdded = if (useServerDns) {
+                dnsServers.distinct().count { dns ->
+                    try {
+                        builder.addDnsServer(dns)
+                        true
+                    } catch (e: IllegalArgumentException) {
+                        Log.w(TAG, "VPN server supplied an invalid DNS address", e)
+                        false
+                    }
+                } > 0
+            } else false
+            if (!serverDnsAdded) {
+                TunnelDns.GOOGLE_IPS.forEach { builder.addDnsServer(it) }
             }
             
             // NOTE: We no longer exclude our own app from VPN.
@@ -1443,7 +1442,7 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
                                 .setBlocking(true)
 
                             // Add DNS servers
-                            val effectiveDns = if (dnsServers.isNotEmpty()) dnsServers else listOf("8.8.8.8", "1.1.1.1")
+                            val effectiveDns = dnsServers.ifEmpty { TunnelDns.GOOGLE_IPS }
                             effectiveDns.forEach { dns ->
                                 try {
                                     builder.addDnsServer(dns)
