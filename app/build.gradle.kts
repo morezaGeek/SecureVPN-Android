@@ -28,8 +28,8 @@ android {
         applicationId = if (previewBuild) "com.rahanetmci.securevpn.preview" else "com.rahanetmci.securevpn"
         minSdk = 26
         targetSdk = 36
-        versionCode = 17
-        versionName = "1.1.12" + when {
+        versionCode = 18
+        versionName = "1.1.13" + when {
             previewBuild && connectedCpuLock -> "-test-cpu-lock"
             previewBuild -> "-test"
             else -> ""
