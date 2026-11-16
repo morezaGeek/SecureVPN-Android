@@ -60,6 +60,7 @@ class SingBoxEngine(
         fun requestVpnInterface(
             address: String,
             prefix: Int,
+            ipv6Address: Pair<String, Int>?,
             dnsServers: List<String>,
             mtu: Int
         ): ParcelFileDescriptor?
@@ -163,7 +164,7 @@ class SingBoxEngine(
 
     private fun logDnsMode() {
         val dns = runtimeDns ?: TunnelDnsSettings.fromPreferences(context.getSharedPreferences("vpn_app_prefs", 0))
-        callback.onLog(if (dns.fakeIp) "DNS mode: FakeIP (destination A/AAAA answers do not use DoH)"
+        callback.onLog(if (dns.fakeIp) "DNS mode: FakeIP (destination resolution on the VPN server)"
             else "DNS mode: real answers via DoH ${java.net.URI(dns.url).host} through VPN")
     }
 
@@ -505,7 +506,12 @@ class SingBoxEngine(
                 Log.w(TAG, "Could not extract DNS server from TunOptions: ${e.message}")
             }
             
-            val fd = callback.requestVpnInterface(address, prefix, dnsList, mtu)
+            val inet6 = options.getInet6Address()
+            val ipv6Address = if (inet6 != null && inet6.hasNext()) {
+                val p = inet6.next()
+                p.address() to p.prefix()
+            } else null
+            val fd = callback.requestVpnInterface(address, prefix, ipv6Address, dnsList, mtu)
             
             if (fd != null) {
                 Log.d(TAG, "TUN interface opened: fd=${fd.fd}")

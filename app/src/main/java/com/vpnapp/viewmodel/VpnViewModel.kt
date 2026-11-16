@@ -794,8 +794,17 @@ class VpnViewModel @JvmOverloads constructor(application: Application,
     val useFakeIp: StateFlow<Boolean> = _useFakeIp
     private val _useLegacyServerDns = MutableStateFlow(dnsPreferences.getBoolean(TunnelDns.LEGACY_SERVER_DNS_KEY, false))
     val useLegacyServerDns: StateFlow<Boolean> = _useLegacyServerDns.asStateFlow()
+    private val _preferIpv6 = MutableStateFlow(dnsPreferences.getBoolean(TunnelDnsSettings.PREFER_IPV6_KEY, false))
+    val preferIpv6: StateFlow<Boolean> = _preferIpv6.asStateFlow()
 
-    fun tunnelDnsSettings() = TunnelDnsSettings(_tunnelDnsUrl.value, _useFakeIp.value, _useLegacyServerDns.value)
+    fun tunnelDnsSettings() = TunnelDnsSettings(
+        _tunnelDnsUrl.value, _useFakeIp.value, _useLegacyServerDns.value, _preferIpv6.value
+    )
+
+    fun setPreferIpv6(enabled: Boolean) {
+        _preferIpv6.value = enabled
+        dnsPreferences.edit().putBoolean(TunnelDnsSettings.PREFER_IPV6_KEY, enabled).apply()
+    }
 
     fun setTunnelDnsUrl(url: String) {
         val validated = TunnelDns.validateUrl(url)

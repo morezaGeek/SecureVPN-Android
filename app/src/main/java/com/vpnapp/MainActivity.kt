@@ -465,6 +465,7 @@ fun VpnApp(viewModel: VpnViewModel = viewModel(), updateRequest: Int = 0) {
             val tunnelDnsUrl by viewModel.tunnelDnsUrl.collectAsStateWithLifecycle()
             val useFakeIp by viewModel.useFakeIp.collectAsStateWithLifecycle()
             val useLegacyServerDns by viewModel.useLegacyServerDns.collectAsStateWithLifecycle()
+            val preferIpv6 by viewModel.preferIpv6.collectAsStateWithLifecycle()
             val excludedApps by viewModel.excludedApps.collectAsStateWithLifecycle()
             val bypassIran by viewModel.bypassIran.collectAsStateWithLifecycle()
             val bypassPrivateIps by viewModel.bypassPrivateIps.collectAsStateWithLifecycle()
@@ -483,6 +484,8 @@ fun VpnApp(viewModel: VpnViewModel = viewModel(), updateRequest: Int = 0) {
                 onTunnelDnsUrlChange = viewModel::setTunnelDnsUrl,
                 onUseFakeIpChange = viewModel::setUseFakeIp,
                 onUseLegacyServerDnsChange = viewModel::setUseLegacyServerDns,
+                preferIpv6 = preferIpv6,
+                onPreferIpv6Change = viewModel::setPreferIpv6,
                 bypassIran = bypassIran,
                 bypassPrivateIps = bypassPrivateIps,
                 forceXhttpStreamUp = forceXhttpStreamUp,

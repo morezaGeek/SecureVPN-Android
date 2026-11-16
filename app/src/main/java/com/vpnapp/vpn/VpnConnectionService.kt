@@ -657,11 +657,15 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
                 }
             }
             ACTION_UPDATE_ROUTING -> {
-                runtimeDns = TunnelDnsSettings.read(intent) ?: runtimeDns
+                val newDns = TunnelDnsSettings.read(intent)
                 serviceScope?.launch {
                     // Reload operations run serially with engine start/stop.
                     synchronized(routingLock) {
                         if (isDisconnecting.get() || isCancellationRequested.get()) return@synchronized
+                        if (newDns != null) {
+                            // Changing the IP family takes effect on the next connection.
+                            runtimeDns = newDns.copy(preferIpv6 = runtimeDns?.preferIpv6 == true)
+                        }
                         val prefs = getSharedPreferences("vpn_app_prefs", Context.MODE_PRIVATE)
                         currentBypassIran = intent.getBooleanExtra("bypass_iran", currentBypassIran)
                         currentBypassPrivateIps = intent.getBooleanExtra("bypass_private_ips", currentBypassPrivateIps)
@@ -1023,7 +1027,7 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
             
             val useServerDns = runtimeDns?.useLegacyServerDns == true
             val serverDnsAdded = if (useServerDns) {
-                dnsServers.distinct().count { dns ->
+                dnsServers.distinct().filterNot { ':' in it }.count { dns ->
                     try {
                         builder.addDnsServer(dns)
                         true
@@ -1424,6 +1428,7 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
                     override fun requestVpnInterface(
                         address: String,
                         prefix: Int,
+                        ipv6Address: Pair<String, Int>?,
                         dnsServers: List<String>,
                         mtu: Int
                     ): ParcelFileDescriptor? {
@@ -1441,8 +1446,14 @@ class VpnConnectionService : VpnService() { //, V2RayVPNServiceSupportsSet { // 
                                 .setMtu(mtu)
                                 .setBlocking(true)
 
+                            // VpnService blocks families that have no addresses, routes or DNS.
+                            ipv6Address?.let { (ip, prefixLength) ->
+                                builder.addAddress(ip, prefixLength).addRoute("::", 0)
+                            }
+
                             // Add DNS servers
-                            val effectiveDns = dnsServers.ifEmpty { TunnelDns.GOOGLE_IPS }
+                            val effectiveDns = dnsServers.filter { ipv6Address != null || ':' !in it }
+                                .ifEmpty { TunnelDns.GOOGLE_IPS }
                             effectiveDns.forEach { dns ->
                                 try {
                                     builder.addDnsServer(dns)

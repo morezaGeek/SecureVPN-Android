@@ -54,6 +54,8 @@ fun SettingsScreen(
     onTunnelDnsUrlChange: (String) -> Unit = {},
     onUseFakeIpChange: (Boolean) -> Unit = {},
     onUseLegacyServerDnsChange: (Boolean) -> Unit = {},
+    preferIpv6: Boolean = false,
+    onPreferIpv6Change: (Boolean) -> Unit = {},
     onNetworkTools: () -> Unit = {},
     onUsageHistory: () -> Unit = {},
     onCheckForUpdates: (() -> Unit)? = null,
@@ -160,6 +162,16 @@ fun SettingsScreen(
                 )
             }
             
+            SettingsSection(title = "IP Routing") {
+                SettingsToggle(
+                    title = "Prefer IPv6",
+                    subtitle = "Prefer IPv6 when available. Off blocks IPv6 for apps using the VPN. Reconnect to apply. SSTP and Java OpenConnect use IPv4.",
+                    icon = Icons.Default.Router,
+                    checked = preferIpv6,
+                    onCheckedChange = onPreferIpv6Change
+                )
+            }
+
             SettingsSection(title = "Tunnel DNS") {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("V2Ray, Hysteria2 and native OpenConnect use this DoH resolver through the tunnel. Saving turns FakeIP off.",
@@ -181,7 +193,7 @@ fun SettingsScreen(
                         }) { Text("Use Google DNS") }
                     }
                 }
-                SettingsToggle(title = "FakeIP", subtitle = if (useFakeIp) "ON · Resolve destinations at the VPN server"
+                SettingsToggle(title = "FakeIP", subtitle = if (useFakeIp) "ON · Use synthetic IPv4 addresses"
                     else "OFF · Use real answers from tunnel DNS", icon = Icons.Default.Dns,
                     checked = useFakeIp, onCheckedChange = onUseFakeIpChange)
                 SettingsToggle(

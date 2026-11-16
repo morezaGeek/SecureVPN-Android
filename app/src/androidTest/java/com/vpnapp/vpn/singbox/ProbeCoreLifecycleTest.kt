@@ -9,7 +9,9 @@ import com.vpnapp.vpn.VpnConnectionService
 import org.junit.Assert.*
 import org.junit.Test
 import java.io.DataInputStream
+import java.net.InetSocketAddress
 import java.net.ServerSocket
+import java.net.Socket
 import java.net.URL
 import java.util.concurrent.*
 import kotlin.concurrent.thread
@@ -81,6 +83,7 @@ class ProbeCoreLifecycleTest {
         val workers = Executors.newCachedThreadPool()
         val serverJobs = java.util.concurrent.ConcurrentLinkedQueue<java.util.concurrent.Future<*>>()
         val retainedTargets = LinkedBlockingQueue<String>()
+        val ipv6Targets = LinkedBlockingQueue<Int>()
         val tlsFixture = com.vpnapp.LocalTlsServer()
         val server = tlsFixture.server
         val acceptor = thread(isDaemon = true) {
@@ -112,6 +115,7 @@ class ProbeCoreLifecycleTest {
                             while (true) {
                                 val request = reader.readLine() ?: break
                                 if(request.contains("/retained")) retainedTargets.offer(targetName)
+                                if (request.startsWith("GET /ipv6 ")) ipv6Targets.offer(addressType)
                                 var keepAlive = false
                                 while (true) {
                                     val header = reader.readLine() ?: return@submit
@@ -137,12 +141,13 @@ class ProbeCoreLifecycleTest {
         try {
             var retainedFakeIp: String? = null
             repeat(5) { round ->
+                val preferIpv6 = round % 2 == 1
                 events.clear()
                 context.startService(Intent(context, VpnConnectionService::class.java).apply {
                     action = VpnConnectionService.ACTION_CONNECT
                     putExtra(VpnConnectionService.EXTRA_UI_VISIBLE, true)
                     lan.writeTo(this)
-                    TunnelDnsSettings(TunnelDns.DEFAULT_URL, true).writeTo(this)
+                    TunnelDnsSettings(TunnelDns.DEFAULT_URL, true, preferIpv6 = preferIpv6).writeTo(this)
                     putExtra(VpnConnectionService.EXTRA_PROTOCOL, "VLESS")
                     putExtra(VpnConnectionService.EXTRA_V2RAY_TLS, "tls")
                     putExtra(VpnConnectionService.EXTRA_V2RAY_SNI, "localhost")
@@ -167,6 +172,30 @@ class ProbeCoreLifecycleTest {
                     ?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN) == true
                 while (!vpnReady() && android.os.SystemClock.elapsedRealtime() < readyUntil) Thread.sleep(50)
                 assertTrue("DNS query must enter the Android VPN", vpnReady())
+                val link = checkNotNull(manager.getLinkProperties(manager.activeNetwork))
+                assertEquals(preferIpv6, link.linkAddresses.any { it.address is java.net.Inet6Address })
+                assertEquals(preferIpv6, link.routes.any {
+                    it.destination.address is java.net.Inet6Address && it.destination.prefixLength == 0 &&
+                        it.type == android.net.RouteInfo.RTN_UNICAST
+                })
+                val ipv6Response = runCatching {
+                    Socket().use { socket ->
+                        val address = "2001:db8:20::103"
+                        socket.connect(InetSocketAddress(address, 80), 2000)
+                        socket.soTimeout = 2000
+                        socket.getOutputStream().write(
+                            "GET /ipv6 HTTP/1.1\r\nHost: [$address]\r\nConnection: close\r\n\r\n".toByteArray()
+                        )
+                        socket.getInputStream().bufferedReader().readLine()
+                    }
+                }.getOrNull()
+                if (preferIpv6) {
+                    assertTrue("IPv6 must reach the proxy via the VPN", ipv6Response?.contains("200") == true)
+                    assertEquals(3, ipv6Targets.poll(1, TimeUnit.SECONDS))
+                } else {
+                    assertNull("The VPN must block IPv6", ipv6Response)
+                    assertNull(ipv6Targets.poll())
+                }
                 if (round == 0) {
                     // Simulate the reported case: the OS drops the notice without a delete callback.
                     val notifications = context.getSystemService(android.app.NotificationManager::class.java)

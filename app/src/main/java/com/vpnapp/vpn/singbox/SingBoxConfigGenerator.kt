@@ -7,7 +7,7 @@ import com.vpnapp.data.VpnProtocol
 import com.vpnapp.data.TunnelEncryptionPolicy
 import org.json.JSONArray
 import org.json.JSONObject
-import java.net.InetAddress
+import java.net.Inet4Address
 
 /**
  * Generates sing-box configuration JSON from a VpnProfile.
@@ -16,19 +16,14 @@ import java.net.InetAddress
 object SingBoxConfigGenerator {
 
     private const val TAG = "SingBoxConfigGenerator"
+    private const val TUN_IPV6_ADDRESS = "2001:db8:19::1/126"
+    private val ipv4Literal = Regex("^\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}$")
 
     /**
      * Resolve domain to IP address to avoid DNS resolution issues inside sing-box's Go runtime.
      * The Go runtime cannot resolve domains properly when VPN is active, even with app exclusion.
      */
-    private fun resolveServerAddress(address: String, context: Context): String {
-        // Check if already an IP address
-        val ipRegex = Regex("^\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}$")
-        if (ipRegex.matches(address)) {
-            Log.d(TAG, "Server address is already an IP: $address")
-            return address
-        }
-
+    private fun resolveServerAddress(address: String, context: Context, preferIpv6: Boolean): String {
         return try {
             val connectivity = context.getSystemService(android.net.ConnectivityManager::class.java)
             val network = connectivity.allNetworks.firstOrNull {
@@ -36,7 +31,9 @@ object SingBoxConfigGenerator {
                 caps?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) == true &&
                     !caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN)
             }
-            val inetAddress = network?.getAllByName(address)?.firstOrNull()
+            val addresses = network?.getAllByName(address).orEmpty()
+            val inetAddress = (addresses.firstOrNull { it is Inet4Address }
+                ?: addresses.firstOrNull().takeIf { preferIpv6 })
                 ?: return address // Let the protected core resolve; never resolve through an old VPN.
             val resolvedIp = inetAddress.hostAddress ?: address
             Log.i(TAG, "Resolved $address to $resolvedIp")
@@ -51,10 +48,18 @@ object SingBoxConfigGenerator {
         val config = JSONObject()
         val dns = runtimeDns ?: TunnelDnsSettings.fromPreferences(context.getSharedPreferences("vpn_app_prefs", 0))
         val fakeIp = dns.fakeIp
+        val preferIpv6 = dns.preferIpv6
+        val dnsStrategy = if (preferIpv6) "prefer_ipv6" else "ipv4_only"
+        val proxyDns = TunnelDns.server(TunnelDns.validateUrl(dns.url), "proxy-dns", "proxy")
 
-        val isIp = profile.serverAddress.matches(Regex("^\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}$"))
+        val serverAddress = profile.serverAddress.removeSurrounding("[", "]")
+        val isIp = ipv4Literal.matches(serverAddress) || ':' in serverAddress
+        require(preferIpv6 || ':' !in serverAddress) { "Enable Prefer IPv6 to use this VPN server address" }
+        require(preferIpv6 || ':' !in proxyDns.getString("server")) {
+            "Enable Prefer IPv6 to use this DNS resolver address"
+        }
         // PRE-RESOLVE the server address to IP to avoid Go runtime DNS issues
-        val resolvedServerAddress = resolveServerAddress(profile.serverAddress, context)
+        val resolvedServerAddress = if (isIp) serverAddress else resolveServerAddress(serverAddress, context, preferIpv6)
         
         // Preserve original domain in v2raySni and v2rayHost if empty
         val originalDomain = profile.v2raySni.ifEmpty { if (!isIp) profile.serverAddress else "" }
@@ -81,7 +86,7 @@ object SingBoxConfigGenerator {
         // The DoH resolver returns real answers by default. FakeIP is opt-in.
         config.put("dns", JSONObject().apply {
             put("servers", JSONArray().apply {
-                put(TunnelDns.server(TunnelDns.validateUrl(dns.url), "proxy-dns", "proxy"))
+                put(proxyDns)
                 if (profile.v2rayEch.isNotBlank()) put(TunnelDns.echResolver(profile.v2rayEch))
                 // FakeIP server: returns instant fake IPs with ZERO latency (IPv4 only)
                 put(JSONObject().apply {
@@ -110,6 +115,10 @@ object SingBoxConfigGenerator {
                 })
             })
             put("rules", JSONArray().apply {
+                if (!preferIpv6) put(JSONObject()
+                    .put("query_type", "AAAA")
+                    .put("action", "predefined")
+                    .put("rcode", "NOERROR"))
                 // ECH must be bootstrapped before opening the proxy's TLS session.
                 if (profile.v2rayEch.isNotBlank()) put(JSONObject().apply {
                     put("domain", JSONArray().put(TunnelDns.echQueryName(profile.v2rayEch)))
@@ -145,12 +154,12 @@ object SingBoxConfigGenerator {
                 put(JSONObject().apply {
                     put("query_type", JSONArray().apply {
                         put("A")
-                        put("AAAA")
+                        if (preferIpv6 && !fakeIp) put("AAAA")
                     })
                     put("server", if (fakeIp) "fakeip" else "proxy-dns")
                 })
             })
-            put("strategy", "ipv4_only")
+            put("strategy", dnsStrategy)
             put("final", "proxy-dns")
         })
 
@@ -171,10 +180,11 @@ object SingBoxConfigGenerator {
                 put("interface_name", "tun0")
                 put("address", JSONArray().apply { 
                     put("172.19.0.1/30")
+                    if (preferIpv6) put(TUN_IPV6_ADDRESS)
                 })
                 // Standard MTU 1400 to prevent packet fragmentation and buffering on mobile LTE carriers
                 val safeMtu = if (profile.mtu in 1200..1500) profile.mtu else 1400
-                put("mtu", safeMtu)
+                put("mtu", if (preferIpv6) safeMtu.coerceAtLeast(1280) else safeMtu)
                 put("auto_route", false) // Handled by Android VpnService Builder
                 put("strict_route", false)
                 put("stack", "mixed")
@@ -190,6 +200,7 @@ object SingBoxConfigGenerator {
                 put("server", "https://$host:${profile.port}")
                 put("username", profile.username); put("password", profile.password)
                 put("flavor", "anyconnect"); put("no_udp", profile.disableDtls)
+                put("ipv6_disabled", !preferIpv6)
                 put("mtu", profile.mtu); put("dpd_interval", "20s"); put("reconnect_timeout", "60s")
                 put("tcp_keep_alive_enabled", true)
                 put("tls", JSONObject().put("insecure", profile.skipCertificateVerification)
@@ -205,6 +216,7 @@ object SingBoxConfigGenerator {
             put("default_domain_resolver", "direct-dns")
             put("final", "proxy")
             put("rules", JSONArray().apply {
+                if (!preferIpv6) put(JSONObject().put("ip_version", 6).put("action", "reject"))
                 put(JSONObject().apply {
                     put("action", "sniff")
                     put("sniffer", JSONArray().apply {
@@ -222,12 +234,10 @@ object SingBoxConfigGenerator {
                     put("protocol", "dns")
                     put("action", "hijack-dns")
                 })
-                // Cached FakeIP addresses become domain destinations even after FakeIP is disabled.
-                // Resolve those and domain-based probes locally so the proxy receives the chosen
-                // resolver's IP instead of resolving again at the VPN server.
+                // Resolve real DNS answers locally. FakeIP keeps domain resolution on the VPN server.
                 if (!fakeIp) put(JSONObject().apply {
                     put("action", "resolve")
-                    put("strategy", "ipv4_only")
+                    put("strategy", dnsStrategy)
                 })
                 if (probe != null) put(JSONObject().apply {
                     put("inbound", JSONArray().put("app-probe"))

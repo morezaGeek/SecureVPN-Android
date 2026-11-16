@@ -39,8 +39,10 @@ class SubscriptionPingScopeTest {
                 assertFalse("Co-hosted DNS relays must not inherit the VPN server's direct bypass",
                     routeRules.any { it.optString("outbound") == "direct" && it.optJSONArray("ip_cidr")?.toString()?.contains("192.0.2.1/32") == true })
                 val dns = org.json.JSONObject(config).getJSONObject("dns")
-                assertEquals("ech-dns",dns.getJSONArray("rules").getJSONObject(0).getString("server"))
                 val rules=dns.getJSONArray("rules")
+                val bootstrap = (0 until rules.length()).map { rules.getJSONObject(it) }
+                    .first { it.has("server") }
+                assertEquals("ech-dns", bootstrap.getString("server"))
                 assertEquals(if(fake) "fakeip" else "proxy-dns",rules.getJSONObject(rules.length()-1).getString("server"))
                 val resolver=dns.getJSONArray("servers").getJSONObject(0)
                 assertEquals("doh.rahanetmci.com",resolver.getString("server"))
