@@ -693,8 +693,4 @@ class SingBoxEngine(
     override fun usePlatformShell(): Boolean {
         return false
     }
-
-    override fun useProcFS(): Boolean {
-        return false
-    }
 }

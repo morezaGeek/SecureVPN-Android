@@ -8,10 +8,13 @@ end boundary unsuitable for 16KB pages.
 
 ## Core
 
-- Source: [Leadaxe/sing-box-lx v1.14.2-lx.11](https://github.com/Leadaxe/sing-box-lx/tree/v1.14.2-lx.11),
+- Source: [Leadaxe/sing-box-lx v1.14.4-lx.35](https://github.com/Leadaxe/sing-box-lx/tree/v1.14.4-lx.35)
+  (Android 1.1.14; 1.1.13 and earlier used v1.14.2-lx.11),
   including the four submodules pinned in the provenance JSON. A GitHub source
   archive alone does not include those submodule contents; use a recursive Git
   checkout or fetch the exact commits into their respective submodule folders.
+  The official lx.35 AAR was checked and still fails the GNU_RELRO end check,
+  so the core is rebuilt from source as before.
 - Go 1.26.8; `github.com/sagernet/gomobile/cmd/gomobile@v0.1.13` and
   `github.com/sagernet/gomobile/cmd/gobind@v0.1.13`.
 - Official Android NDK r30, revision 30.0.16248370; Android API 26, four ABIs.
@@ -30,6 +33,11 @@ gobind into that GOPATH with `GOTOOLCHAIN=go1.26.8`. Then run:
 $llvmBin = Join-Path $nativeTools 'android-ndk-r30/toolchains/llvm/prebuilt/windows-x86_64/bin'
 python .\scripts\package-native-aar.py --input "$coreSource/libbox-securevpn.aar" --output .\app\libs\libbox.aar --llvm-bin "$llvmBin" --symbols-dir "$symbolsDir"
 ```
+
+The script runs under Windows PowerShell 5.1 and PowerShell 7. Start it from a
+shell whose environment has no hidden `=ExitCode`-style entries (for example a
+normal console or Git Bash): gomobile v0.1.13 panics with `malformed env var`
+when it inherits one.
 
 CGO parses CC paths itself. On Windows a path containing spaces needs the short
 path workaround already in the PowerShell script, or a tools directory without

@@ -2,7 +2,9 @@ param(
     [Parameter(Mandatory=$true)][string]$CoreSource,
     [Parameter(Mandatory=$true)][string]$NativeTools,
     [Parameter(Mandatory=$true)][string]$AndroidSdk,
-    [Parameter(Mandatory=$true)][string]$JavaHome
+    [Parameter(Mandatory=$true)][string]$JavaHome,
+    # Reported by the core (`constant.Version`); keep in step with app/libs/libbox-provenance.json.
+    [string]$CoreVersion='1.14.4-lx.35-securevpn.16k'
 )
 $ErrorActionPreference='Stop'
 # CGO tokenizes CC itself; an NDK path containing spaces must use its Windows short path.
@@ -26,7 +28,8 @@ $env:PATH=(Join-Path $NativeTools 'go\bin')+';'+(Join-Path $env:GOPATH 'bin')+';
 # Rebuild source using NDK r30 and explicit RELRO/page alignment; do not patch ELF headers.
 $env:CGO_LDFLAGS='-Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384'
 $tags='with_gvisor,with_quic,with_utls,with_xhttp,with_lx_command,with_openconnect,badlinkname,tfogo_checklinkname0'
-$linkFlags='-X github.com/sagernet/sing-box/constant.Version=1.14.2-lx.11-securevpn.16k -X runtime.godebugDefault=multipathtcp=0,tlssha1=1 -checklinkname=0 -R 16384 -w -extldflags "-Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384"'
+# One comma-joined -Wl value: no spaces, so no nested quotes for Windows PowerShell 5.1 to split.
+$linkFlags="-X github.com/sagernet/sing-box/constant.Version=$CoreVersion -X runtime.godebugDefault=multipathtcp=0,tlssha1=1 -checklinkname=0 -R 16384 -w -extldflags=-Wl,-z,max-page-size=16384,-z,common-page-size=16384"
 Push-Location -LiteralPath $CoreSource
 try {
     & (Join-Path $env:GOPATH 'bin\gomobile.exe') bind -v -o libbox-securevpn.aar -target android -androidapi 26 -javapkg io.nekohasekai -libname box -trimpath -buildvcs=false -tags $tags -ldflags $linkFlags ./experimental/libbox

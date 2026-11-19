@@ -217,7 +217,6 @@ object SingBoxDelayTester {
                 override fun usePlatformAutoDetectInterfaceControl(): Boolean = false
                 override fun usePlatformBridge(): Boolean = false
                 override fun usePlatformShell(): Boolean = false
-                override fun useProcFS(): Boolean = false
             }
 
             val server = CommandServer(handler, platformInterface)
